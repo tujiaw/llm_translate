@@ -4,6 +4,13 @@
  * UI服务类 - 处理界面元素的创建和管理
  */
 class UiService {
+  static safeRemoveTranslateButton() {
+    const existingButton = document.querySelector('.llm-translate-button');
+    if (existingButton && document.body.contains(existingButton)) {
+      document.body.removeChild(existingButton);
+    }
+  }
+
   /**
    * 创建翻译按钮
    * @param {number} x - X坐标
@@ -14,10 +21,7 @@ class UiService {
    */
   static createTranslateButton(x, y, textToTranslate, onTranslate) {
     // 检查是否已经存在翻译按钮，如果有则移除
-    const existingButton = document.querySelector('.llm-translate-button');
-    if (existingButton && document.body.contains(existingButton)) {
-      document.body.removeChild(existingButton);
-    }
+    UiService.safeRemoveTranslateButton();
     
     const button = document.createElement('div');
     button.className = 'llm-translate-button';
@@ -40,6 +44,7 @@ class UiService {
     
     // 点击事件
     button.onclick = function(e) {
+      console.log("4")
       e.stopPropagation();
       const text = this.dataset.textToTranslate;
       

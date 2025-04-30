@@ -68,9 +68,12 @@
      */
     function setupTextSelectionListener() {
       // 使用节流函数优化事件处理
-      const throttledMouseUpHandler = Utils.throttle((event) => {
+      const debounceMouseUpHandler = Utils.debounce((event) => {
         // 检查事件源是否来自翻译弹窗
         if (event.target.closest('.llm-translation-popup')) {
+          return;
+        }
+        if (event.target.closest('.llm-translate-button')) {
           return;
         }
         
@@ -79,32 +82,20 @@
         
         // 只在有文本被选中时才处理
         if (selectedText) {
+          console.log("1")
           handleTextSelection(event);
         } else {
+          console.log("2")
+          UiService.safeRemoveTranslateButton();
           if (translationPopup && document.body.contains(translationPopup)) {
+            console.log("3")
             document.body.removeChild(translationPopup);
             translationPopup = null;
           }
         }
-      }, 300);
+      }, 100);
       
-      document.addEventListener('mouseup', throttledMouseUpHandler);
-      
-      // 额外添加双击事件监听
-      document.addEventListener('dblclick', function(event) {
-        // 检查事件源是否来自翻译弹窗
-        if (event.target.closest('.llm-translation-popup')) {
-          return;
-        }
-        
-        // 延迟一点执行，确保选中文本已经完成
-        setTimeout(() => {
-          const selectedText = window.getSelection().toString().trim();
-          if (selectedText) {
-            handleTextSelection(event);
-          }
-        }, 50);
-      });
+      document.addEventListener('mouseup', debounceMouseUpHandler);
     }
     
     /**
