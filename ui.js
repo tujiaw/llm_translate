@@ -57,24 +57,6 @@ class UiService {
     document.body.appendChild(button);
     
     // 点击页面其他位置移除按钮
-    const removeButtonHandler = function(e) {
-      if (!button || !document.body.contains(button)) {
-        document.removeEventListener('mousedown', removeButtonHandler);
-        return;
-      }
-      
-      if (e.target !== button) {
-        if (document.body.contains(button)) {
-          document.body.removeChild(button);
-        }
-        document.removeEventListener('mousedown', removeButtonHandler);
-      }
-    };
-    
-    // 延迟添加点击监听器，避免双击事件冲突
-    setTimeout(() => {
-      document.addEventListener('mousedown', removeButtonHandler);
-    }, 300);
     
     return button;
   }
@@ -102,9 +84,9 @@ class UiService {
     popup.style.maxWidth = '400px';
     
     // 在弹窗上直接阻止事件冒泡
-    popup.addEventListener('mousedown', (e) => {
-      e.stopPropagation();
-    });
+    // popup.addEventListener('mousedown', (e) => {
+    //   e.stopPropagation();
+    // });
     
     // 加载指示器
     const loader = document.createElement('div');

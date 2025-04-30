@@ -68,14 +68,26 @@
      */
     function setupTextSelectionListener() {
       // 使用节流函数优化事件处理
-      const throttledMouseUpHandler = Utils.throttle(handleTextSelection, 300);
+      const throttledMouseUpHandler = Utils.throttle((event) => {
+        // 获取选中的文本
+        const selectedText = window.getSelection().toString().trim();
+        
+        // 只在有文本被选中时才处理
+        if (selectedText) {
+          handleTextSelection(event);
+        }
+      }, 300);
+      
       document.addEventListener('mouseup', throttledMouseUpHandler);
       
       // 额外添加双击事件监听
       document.addEventListener('dblclick', function(event) {
         // 延迟一点执行，确保选中文本已经完成
         setTimeout(() => {
-          handleTextSelection(event);
+          const selectedText = window.getSelection().toString().trim();
+          if (selectedText) {
+            handleTextSelection(event);
+          }
         }, 50);
       });
     }
