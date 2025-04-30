@@ -23,18 +23,9 @@ class UiService {
     button.className = 'llm-translate-button';
     button.innerText = 'Go';
     
-    // 按钮样式
-    button.style.position = 'absolute';
+    // 只设置动态位置
     button.style.left = `${x}px`;
     button.style.top = `${y + 20}px`;
-    button.style.zIndex = '10000';
-    button.style.backgroundColor = '#4CAF50';
-    button.style.color = 'white';
-    button.style.padding = '5px 10px';
-    button.style.borderRadius = '4px';
-    button.style.cursor = 'pointer';
-    button.style.fontSize = '14px';
-    button.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
     
     // 确保按钮在屏幕内
     const windowWidth = window.innerWidth || document.documentElement.clientWidth;
@@ -46,14 +37,6 @@ class UiService {
     
     // 将要翻译的文本保存在按钮的数据属性中
     button.dataset.textToTranslate = textToTranslate;
-    
-    // 鼠标悬停效果
-    button.onmouseover = function() {
-      this.style.backgroundColor = '#45a049';
-    };
-    button.onmouseout = function() {
-      this.style.backgroundColor = '#4CAF50';
-    };
     
     // 点击事件
     button.onclick = function(e) {

@@ -3,13 +3,17 @@
   z-index: 10000;
   background-color: #4CAF50;
   color: white;
-  padding: 5px 10px;
-  border-radius: 4px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
   cursor: pointer;
   font-size: 14px;
   box-shadow: 0 2px 5px rgba(0,0,0,0.2);
   font-family: Arial, sans-serif;
   transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .llm-translate-button:hover {
