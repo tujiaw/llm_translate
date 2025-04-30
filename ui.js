@@ -217,17 +217,12 @@ class UiService {
   /**
    * 复制文本到剪贴板
    * @param {string} text - 要复制的文本
-   * @param {HTMLElement} button - 复制按钮元素
    * @returns {Promise<void>}
    */
-  static async copyToClipboard(text, button) {
+  static async copyToClipboard(text) {
     try {
       // 先尝试使用现代API
       await navigator.clipboard.writeText(text);
-      button.textContent = 'Copied';
-      setTimeout(() => {
-        button.textContent = 'Copy';
-      }, 1500);
     } catch (err) {
       console.error('Failed to copy using modern API:', err);
       // 如果现代API失败，尝试使用旧的API
@@ -243,46 +238,14 @@ class UiService {
         const successful = document.execCommand('copy');
         document.body.removeChild(textarea);
         
-        if (successful) {
-          button.textContent = 'Copied';
-          setTimeout(() => {
-            button.textContent = 'Copy';
-          }, 1500);
-        } else {
+        if (!successful) {
           throw new Error('Copy failed');
         }
       } catch (fallbackErr) {
         console.error('Failed to copy using fallback method:', fallbackErr);
-        button.textContent = 'Copy Failed';
-        setTimeout(() => {
-          button.textContent = 'Copy';
-        }, 1500);
+        throw fallbackErr;
       }
     }
-  }
-
-  /**
-   * 创建复制按钮
-   * @param {string} textToCopy - 要复制的文本
-   * @returns {HTMLElement} 创建的按钮元素
-   */
-  static createCopyButton(textToCopy) {
-    const button = document.createElement('button');
-    button.textContent = 'Copy';
-    button.style.backgroundColor = '#f0f0f0';
-    button.style.border = 'none';
-    button.style.padding = '5px 10px';
-    button.style.borderRadius = '4px';
-    button.style.cursor = 'pointer';
-    button.style.zIndex = '10002';
-    
-    button.onclick = async function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      await UiService.copyToClipboard(textToCopy, button);
-    };
-    
-    return button;
   }
 
   /**
@@ -291,7 +254,7 @@ class UiService {
    * @param {string} originalText - 原文文本
    * @param {string} translatedText - 翻译后的文本
    */
-  static updatePopupWithTranslation(popup, originalText, translatedText) {
+  static async updatePopupWithTranslation(popup, originalText, translatedText) {
     if (!popup || !document.body.contains(popup)) {
       return null;
     }
@@ -323,34 +286,16 @@ class UiService {
     result.style.marginBottom = '10px';
     result.textContent = translatedText;
     
-    // 控制按钮容器
-    const controls = document.createElement('div');
-    controls.style.display = 'flex';
-    controls.style.justifyContent = 'space-between';
-    controls.style.marginTop = '10px';
-    
-    // 复制按钮
-    const copyBtn = this.createCopyButton(translatedText);
-    
-    // 关闭按钮
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = 'Close';
-    closeBtn.style.backgroundColor = '#f0f0f0';
-    closeBtn.style.border = 'none';
-    closeBtn.style.padding = '5px 10px';
-    closeBtn.style.borderRadius = '4px';
-    closeBtn.style.cursor = 'pointer';
-    closeBtn.onclick = function() {
-      document.body.removeChild(popup);
-    };
-    
-    controls.appendChild(copyBtn);
-    controls.appendChild(closeBtn);
-    
     // 添加到弹窗
     popup.appendChild(original);
     popup.appendChild(result);
-    popup.appendChild(controls);
+    
+    // 自动复制翻译结果到剪贴板
+    try {
+      await this.copyToClipboard(translatedText);
+    } catch (error) {
+      console.error('Failed to copy translation to clipboard:', error);
+    }
     
     return popup;
   }
