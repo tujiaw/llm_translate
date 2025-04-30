@@ -1,0 +1,49 @@
+.llm-translate-button {
+  position: absolute;
+  z-index: 10000;
+  background-color: #4CAF50;
+  color: white;
+  padding: 5px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  font-family: Arial, sans-serif;
+  transition: background-color 0.2s;
+}
+
+.llm-translate-button:hover {
+  background-color: #45a049;
+}
+
+.llm-translation-popup {
+  position: absolute;
+  z-index: 10000;
+  background-color: white;
+  padding: 15px;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+  min-width: 200px;
+  max-width: 400px;
+  font-family: Arial, sans-serif;
+}
+
+.llm-original-text {
+  font-size: 14px;
+  color: #666;
+  margin-bottom: 8px;
+  border-bottom: 1px solid #eee;
+  padding-bottom: 8px;
+}
+
+.llm-translated-text {
+  font-size: 14px;
+  color: #333;
+  margin-bottom: 10px;
+  line-height: 1.4;
+}
+
+@keyframes llm-translate-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+} 

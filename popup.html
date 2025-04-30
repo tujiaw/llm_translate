@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>LLM翻译</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+<body>
+  <div class="container">
+    <h1>LLM翻译</h1>
+    
+    <div class="translation-area">
+      <textarea id="inputText" placeholder="输入要翻译的文本..."></textarea>
+      <div class="controls">
+        <button id="translateBtn">翻译</button>
+        <div class="spinner" id="loadingSpinner"></div>
+      </div>
+      <div class="result-container">
+        <textarea id="outputText" placeholder="翻译结果..." readonly></textarea>
+        <button id="copyBtn" title="复制结果"><img src="images/copy.svg" alt="复制"></button>
+      </div>
+    </div>
+
+    <div class="settings-section">
+      <h2>设置</h2>
+      <div class="model-selection">
+        <label for="modelSelect">选择模型:</label>
+        <select id="modelSelect">
+          <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
+          <option value="gpt-4">GPT-4</option>
+          <option value="claude-3">Claude 3</option>
+          <option value="gemini-pro">Gemini Pro</option>
+          <option value="custom">自定义...</option>
+        </select>
+      </div>
+      
+      <div id="customModelConfig" class="hidden">
+        <input type="text" id="customModelName" placeholder="模型名称">
+        <input type="text" id="customModelEndpoint" placeholder="API端点">
+      </div>
+      
+      <div class="api-key">
+        <label for="apiKey">API密钥:</label>
+        <div class="key-input-container">
+          <input type="password" id="apiKey" placeholder="输入API密钥">
+          <button id="showKeyBtn">显示</button>
+        </div>
+      </div>
+      
+      <button id="saveSettingsBtn">保存设置</button>
+    </div>
+    
+    <div class="help-section">
+      <h3>使用提示</h3>
+      <ul>
+        <li>选择文本后右键点击可直接翻译</li>
+        <li>自动检测中英文并互译</li>
+        <li>可在设置中配置不同的模型</li>
+      </ul>
+    </div>
+  </div>
+  <script src="popup.js"></script>
+</body>
+</html> 
