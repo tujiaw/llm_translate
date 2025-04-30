@@ -42,17 +42,6 @@ class TranslatorService {
   }
 
   /**
-   * 获取系统提示语
-   * @param {boolean} isChineseQuery - 是否为中文查询
-   * @returns {string} 系统提示语
-   */
-  static getSystemPrompt(isChineseQuery) {
-    return isChineseQuery 
-      ? "你是一个翻译助手，请将以下中文文本翻译成英文，保持原文的意思、格式和语气。只输出翻译结果，不要有任何解释或额外内容。" 
-      : "你是一个翻译助手，请将以下英文文本翻译成中文，保持原文的意思、格式和语气。只输出翻译结果，不要有任何解释或额外内容。";
-  }
-
-  /**
    * 获取可用的模型列表
    * @returns {Array<{id: string, name: string, category: string}>} 模型列表
    */
