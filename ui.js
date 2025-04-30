@@ -13,6 +13,12 @@ class UiService {
    * @returns {HTMLElement} 创建的按钮元素
    */
   static createTranslateButton(x, y, textToTranslate, onTranslate) {
+    // 检查是否已经存在翻译按钮，如果有则移除
+    const existingButton = document.querySelector('.llm-translate-button');
+    if (existingButton && document.body.contains(existingButton)) {
+      document.body.removeChild(existingButton);
+    }
+    
     const button = document.createElement('div');
     button.className = 'llm-translate-button';
     button.innerText = '翻译';
@@ -29,6 +35,14 @@ class UiService {
     button.style.cursor = 'pointer';
     button.style.fontSize = '14px';
     button.style.boxShadow = '0 2px 5px rgba(0,0,0,0.2)';
+    
+    // 确保按钮在屏幕内
+    const windowWidth = window.innerWidth || document.documentElement.clientWidth;
+    const buttonRect = {width: 60, height: 30}; // 估计的按钮尺寸
+    
+    if (x + buttonRect.width > windowWidth) {
+      button.style.left = `${windowWidth - buttonRect.width - 5}px`;
+    }
     
     // 将要翻译的文本保存在按钮的数据属性中
     button.dataset.textToTranslate = textToTranslate;
@@ -74,7 +88,10 @@ class UiService {
       }
     };
     
-    document.addEventListener('mousedown', removeButtonHandler);
+    // 延迟添加点击监听器，避免双击事件冲突
+    setTimeout(() => {
+      document.addEventListener('mousedown', removeButtonHandler);
+    }, 300);
     
     return button;
   }

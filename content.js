@@ -2,11 +2,22 @@
 // 使用动态导入获取模块
 (async function() {
   try {
+    console.log('开始加载LLM翻译内容脚本');
+    
+    // 构建完整的模块URL
+    const getModuleUrl = (moduleName) => {
+      return chrome.runtime.getURL(moduleName);
+    };
+    
+    // 动态导入模块
     const [uiModule, messagingModule, utilsModule] = await Promise.all([
-      import(chrome.runtime.getURL('ui.js')),
-      import(chrome.runtime.getURL('messaging.js')),
-      import(chrome.runtime.getURL('utils.js'))
-    ]);
+      import(getModuleUrl('ui.js')),
+      import(getModuleUrl('messaging.js')),
+      import(getModuleUrl('utils.js'))
+    ]).catch(error => {
+      console.error('导入模块时出错:', error);
+      throw error;
+    });
     
     const UiService = uiModule.default;
     const MessagingService = messagingModule.default;
@@ -17,7 +28,7 @@
     let translationPopup = null;
     let isExtensionActive = true;
     
-    console.log('LLM翻译内容脚本已加载');
+    console.log('LLM翻译内容脚本已成功加载');
     
     // 初始化
     // 设置消息监听
@@ -59,6 +70,14 @@
       // 使用节流函数优化事件处理
       const throttledMouseUpHandler = Utils.throttle(handleTextSelection, 300);
       document.addEventListener('mouseup', throttledMouseUpHandler);
+      
+      // 额外添加双击事件监听
+      document.addEventListener('dblclick', function(event) {
+        // 延迟一点执行，确保选中文本已经完成
+        setTimeout(() => {
+          handleTextSelection(event);
+        }, 50);
+      });
     }
     
     /**
@@ -66,6 +85,7 @@
      * @param {MouseEvent} event - 鼠标事件
      */
     function handleTextSelection(event) {
+      // 获取当前选中的文本
       selectedText = window.getSelection().toString().trim();
       
       if (selectedText) {
@@ -82,8 +102,8 @@
       
       // 如果有选中的文本，创建快速翻译按钮
       if (selectedText.length > 0) {
-        const x = event.pageX;
-        const y = event.pageY;
+        const x = event.pageX || event.clientX + window.scrollX;
+        const y = event.pageY || event.clientY + window.scrollY;
         console.log('创建翻译按钮，位置:', x, y);
         createTranslateButton(x, y, selectedText);
       }
