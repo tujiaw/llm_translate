@@ -101,6 +101,11 @@ class UiService {
     popup.style.minWidth = '200px';
     popup.style.maxWidth = '400px';
     
+    // 在弹窗上直接阻止事件冒泡
+    popup.addEventListener('mousedown', (e) => {
+      e.stopPropagation();
+    });
+    
     // 加载指示器
     const loader = document.createElement('div');
     loader.style.textAlign = 'center';
@@ -121,79 +126,8 @@ class UiService {
     document.head.appendChild(style);
     
     popup.appendChild(loader);
+    
     document.body.appendChild(popup);
-    
-    // 点击页面其他位置关闭弹窗
-    const closePopupHandler = function(e) {
-      if (!popup) {
-        document.removeEventListener('mousedown', closePopupHandler);
-        return;
-      }
-      
-      if (e.target !== popup && !popup.contains(e.target)) {
-        if (document.body.contains(popup)) {
-          document.body.removeChild(popup);
-        }
-        document.removeEventListener('mousedown', closePopupHandler);
-      }
-    };
-    
-    document.addEventListener('mousedown', closePopupHandler);
-    
-    // 复制按钮
-    const copyBtn = document.createElement('button');
-    copyBtn.textContent = 'Copy';
-    copyBtn.style.backgroundColor = '#f0f0f0';
-    copyBtn.style.border = 'none';
-    copyBtn.style.padding = '5px 10px';
-    copyBtn.style.borderRadius = '4px';
-    copyBtn.style.cursor = 'pointer';
-    copyBtn.style.zIndex = '10002';
-    
-    copyBtn.onclick = async function(e) {
-      e.preventDefault();
-      e.stopPropagation();
-      
-      try {
-        // 先尝试使用现代API
-        await navigator.clipboard.writeText(translatedText);
-        copyBtn.textContent = 'Copied';
-        setTimeout(() => {
-          copyBtn.textContent = 'Copy';
-        }, 1500);
-      } catch (err) {
-        console.error('Failed to copy using modern API:', err);
-        // 如果现代API失败，尝试使用旧的API
-        try {
-          const textarea = document.createElement('textarea');
-          textarea.value = translatedText;
-          textarea.style.position = 'fixed';
-          textarea.style.opacity = '0';
-          textarea.style.pointerEvents = 'none';
-          document.body.appendChild(textarea);
-          
-          textarea.select();
-          const successful = document.execCommand('copy');
-          document.body.removeChild(textarea);
-          
-          if (successful) {
-            copyBtn.textContent = 'Copied';
-            setTimeout(() => {
-              copyBtn.textContent = 'Copy';
-            }, 1500);
-          } else {
-            throw new Error('Copy failed');
-          }
-        } catch (fallbackErr) {
-          console.error('Failed to copy using fallback method:', fallbackErr);
-          copyBtn.textContent = 'Copy Failed';
-          setTimeout(() => {
-            copyBtn.textContent = 'Copy';
-          }, 1500);
-        }
-      }
-    };
-    
     return popup;
   }
 
