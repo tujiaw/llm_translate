@@ -1,0 +1,113 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# Chrome扩展API使用
+
+本项目使用多个Chrome扩展API实现功能，以下是主要使用的API及其用途。
+
+## 权限与声明
+
+在[manifest.json](mdc:manifest.json)中声明了以下权限：
+
+```json
+"permissions": ["storage", "contextMenus", "activeTab"]
+```
+
+- `storage` - 使用Chrome存储API保存设置
+- `contextMenus` - 创建右键菜单选项
+- `activeTab` - 访问当前标签页的内容
+
+## 存储API
+
+使用`chrome.storage.sync`进行设置的保存和读取：
+
+```javascript
+// 读取设置
+chrome.storage.sync.get({ /* 默认值 */ }, function(items) {
+  // 使用读取的设置
+});
+
+// 保存设置
+chrome.storage.sync.set({ /* 设置项 */ }, function() {
+  // 保存完成的回调
+});
+```
+
+## 右键菜单API
+
+在[background.js](mdc:background.js)中创建和处理右键菜单：
+
+```javascript
+// 创建右键菜单
+chrome.contextMenus.create({
+  id: "translateSelection",
+  title: "翻译选中文本",
+  contexts: ["selection"]
+});
+
+// 处理右键菜单点击
+chrome.contextMenus.onClicked.addListener(function(info, tab) {
+  if (info.menuItemId === "translateSelection") {
+    // 处理翻译操作
+  }
+});
+```
+
+## 标签页API
+
+与当前标签页通信并发送消息：
+
+```javascript
+// 发送消息到内容脚本
+chrome.tabs.sendMessage(tabId, { /* 消息内容 */ });
+
+// 查询当前活动标签页
+chrome.tabs.query({active: true, currentWindow: true}, function(tabs) {
+  // 操作当前标签页
+});
+```
+
+## 消息通信API
+
+在不同脚本间进行通信：
+
+```javascript
+// 发送消息
+chrome.runtime.sendMessage({ /* 消息内容 */ });
+
+// 监听消息
+chrome.runtime.onMessage.addListener(function(request, sender, sendResponse) {
+  // 处理接收的消息
+  return true; // 用于异步响应
+});
+```
+
+## 内容脚本API
+
+在[manifest.json](mdc:manifest.json)中声明内容脚本，用于在网页中注入代码：
+
+```json
+"content_scripts": [
+  {
+    "matches": ["<all_urls>"],
+    "js": ["content.js"],
+    "css": ["content.css"]
+  }
+]
+```
+
+内容脚本可以操作网页DOM，监听用户事件，并与背景脚本通信。
+
+## 后台脚本API
+
+在[manifest.json](mdc:manifest.json)中声明后台脚本，用于处理长期运行的任务：
+
+```json
+"background": {
+  "service_worker": "background.js"
+}
+```
+
+后台脚本处理API请求、右键菜单点击等事件，是插件的核心处理逻辑。

@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>API连接测试</title>
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      max-width: 800px;
+      margin: 0 auto;
+      padding: 20px;
+    }
+    .container {
+      border: 1px solid #ddd;
+      padding: 20px;
+      border-radius: 8px;
+    }
+    textarea {
+      width: 100%;
+      min-height: 100px;
+      margin-bottom: 10px;
+    }
+    button {
+      padding: 10px;
+      background-color: #4CAF50;
+      color: white;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+    }
+    .result {
+      border: 1px solid #ddd;
+      padding: 10px;
+      margin-top: 20px;
+      min-height: 100px;
+      white-space: pre-wrap;
+      background-color: #f5f5f5;
+    }
+    label {
+      display: block;
+      margin-bottom: 5px;
+      font-weight: bold;
+    }
+    input, select {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      box-sizing: border-box;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1>API连接测试工具</h1>
+    <p>使用此工具测试与大模型API的连接</p>
+    
+    <div>
+      <label for="endpoint">API端点:</label>
+      <input type="text" id="endpoint" value="https://api.siliconflow.cn/v1/chat/completions">
+      
+      <label for="apiKey">API密钥:</label>
+      <input type="text" id="apiKey" value="sk-yhszqcrexlxohbqlqjnxngoqenrtftzxvuvhdqzdjydtpoic">
+      
+      <label for="model">模型:</label>
+      <input type="text" id="model" value="THUDM/GLM-4-9B-0414">
+      
+      <label for="prompt">提示词:</label>
+      <textarea id="prompt">你好，请问你是什么模型？</textarea>
+      
+      <button id="testBtn">测试连接</button>
+    </div>
+    
+    <div class="result" id="result">测试结果将显示在这里...</div>
+  </div>
+
+  <script>
+    document.getElementById('testBtn').addEventListener('click', async function() {
+      const result = document.getElementById('result');
+      result.textContent = '请求中...';
+      
+      const endpoint = document.getElementById('endpoint').value;
+      const apiKey = document.getElementById('apiKey').value;
+      const model = document.getElementById('model').value;
+      const prompt = document.getElementById('prompt').value;
+      
+      // 验证输入
+      if (!endpoint || !apiKey || !model || !prompt) {
+        result.textContent = '错误: 所有字段都必须填写';
+        return;
+      }
+      
+      try {
+        // 构建请求
+        const requestBody = {
+          model: model,
+          messages: [
+            { role: "user", content: prompt }
+          ],
+          temperature: 0.3
+        };
+        
+        console.log('发送请求到:', endpoint);
+        console.log('请求体:', JSON.stringify(requestBody, null, 2));
+        
+        // 发送请求
+        const response = await fetch(endpoint, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify(requestBody)
+        });
+        
+        console.log('响应状态:', response.status);
+        
+        if (!response.ok) {
+          throw new Error(`API请求失败: ${response.status}`);
+        }
+        
+        // 获取响应
+        const data = await response.json();
+        console.log('API响应:', data);
+        
+        // 显示结果
+        result.textContent = `成功!\n\n响应数据:\n${JSON.stringify(data, null, 2)}`;
+        
+        // 尝试解析模型响应
+        try {
+          const message = data.choices[0].message.content;
+          if (message) {
+            result.textContent += `\n\n模型回复: "${message}"`;
+          }
+        } catch (e) {
+          console.warn('无法解析模型回复:', e);
+        }
+      } catch (error) {
+        console.error('测试失败:', error);
+        result.textContent = `测试失败: ${error.message}`;
+      }
+    });
+  </script>
+</body>
+</html> 

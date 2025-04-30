@@ -1,0 +1,36 @@
+---
+description:
+globs:
+alwaysApply: false
+---
+# 用户界面组件
+
+本项目包含两个主要的UI部分：弹出窗口和网页内容交互元素。
+
+## 弹出窗口
+
+弹出窗口是用户点击插件图标后显示的界面，定义在[popup.html](mdc:popup.html)中，样式在[popup.css](mdc:popup.css)中，逻辑在[popup.js](mdc:popup.js)中。
+
+主要组件:
+- 输入文本区域 (`#inputText`)
+- 翻译按钮 (`#translateBtn`)
+- 输出文本区域 (`#outputText`)
+- 复制结果按钮 (`#copyBtn`)
+- 模型选择下拉菜单 (`#modelSelect`)
+- 自定义模型配置区域 (`#customModelConfig`)
+- API密钥输入框 (`#apiKey`)
+
+样式定义了响应式设计和用户交互效果，如按钮悬停效果、加载动画等。
+
+## 网页内容交互
+
+网页交互元素在用户选择文本时显示，通过[content.js](mdc:content.js)注入，样式在[content.css](mdc:content.css)中定义。
+
+主要组件:
+- 翻译按钮 (`.llm-translate-button`) - 当用户选择文本时显示
+- 翻译弹窗 (`.llm-translation-popup`) - 显示翻译结果
+- 原文显示 (`.llm-original-text`) - 弹窗中显示原始文本
+- 翻译结果 (`.llm-translated-text`) - 弹窗中显示翻译文本
+- 控制按钮 - 复制结果和关闭弹窗
+
+这些元素都是动态创建的，有定位和样式计算以确保在网页中正确显示。

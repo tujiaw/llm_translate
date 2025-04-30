@@ -3,7 +3,19 @@
   "name": "LLM翻译",
   "version": "1.0.0",
   "description": "使用大模型API进行中英文互译的Chrome插件",
-  "permissions": ["storage", "contextMenus", "activeTab"],
+  "permissions": [
+    "storage", 
+    "contextMenus", 
+    "activeTab",
+    "scripting",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://api.siliconflow.cn/*",
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*"
+  ],
   "action": {
     "default_popup": "popup.html",
     "default_icon": {
@@ -21,10 +33,18 @@
     {
       "matches": ["<all_urls>"],
       "js": ["content.js"],
-      "css": ["content.css"]
+      "css": ["content.css"],
+      "run_at": "document_end"
     }
   ],
   "background": {
-    "service_worker": "background.js"
-  }
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["images/*.svg"],
+      "matches": ["<all_urls>"]
+    }
+  ]
 } 
