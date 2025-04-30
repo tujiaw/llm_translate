@@ -41,7 +41,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         inputText: document.getElementById('inputText'),
         outputText: document.getElementById('outputText'),
         translateBtn: document.getElementById('translateBtn'),
-        copyBtn: document.getElementById('copyBtn'),
         modelSelect: document.getElementById('modelSelect'),
         customModelConfig: document.getElementById('customModelConfig'),
         customModelName: document.getElementById('customModelName'),
@@ -95,9 +94,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     function setupEventListeners(elements) {
       // Translate button click event
       elements.translateBtn.addEventListener('click', () => translateText(elements));
-      
-      // Copy button click event
-      elements.copyBtn.addEventListener('click', () => copyToClipboard(elements));
       
       // Show/hide API key button click event
       elements.showKeyBtn.addEventListener('click', () => toggleApiKeyVisibility(elements));
@@ -227,34 +223,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         elements.apiKey.type = 'password';
         elements.showKeyBtn.textContent = 'Show';
       }
-    }
-    
-    /**
-     * Copy translation result to clipboard
-     * @param {object} elements - DOM elements object
-     */
-    function copyToClipboard(elements) {
-      const text = elements.outputText.value;
-      if (!text) return;
-      
-      navigator.clipboard.writeText(text).then(() => {
-        // Show copy success notification
-        const original = elements.copyBtn.innerHTML;
-        elements.copyBtn.innerHTML = '<img src="images/check.svg" alt="Copied">';
-        
-        setTimeout(() => {
-          elements.copyBtn.innerHTML = original;
-        }, 1500);
-      }).catch(err => {
-        console.error('Failed to copy text: ', err);
-        // If copy fails, try using the old copy method
-        elements.outputText.select();
-        document.execCommand('copy');
-        elements.copyBtn.innerHTML = '<img src="images/check.svg" alt="Copied">';
-        setTimeout(() => {
-          elements.copyBtn.innerHTML = original;
-        }, 1500);
-      });
     }
     
     /**

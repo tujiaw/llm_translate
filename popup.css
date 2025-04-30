@@ -83,26 +83,6 @@ textarea {
   background-color: #f5f5f5;
 }
 
-#copyBtn {
-  position: absolute;
-  top: 5px;
-  right: 5px;
-  background-color: rgba(255, 255, 255, 0.8);
-  border: 1px solid #ddd;
-  border-radius: 4px;
-  width: 30px;
-  height: 30px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-#copyBtn img {
-  width: 16px;
-  height: 16px;
-}
-
 .settings-section {
   background-color: #f0f0f0;
   padding: 12px;
