@@ -63,7 +63,13 @@ chrome.runtime.onConnect.addListener(function(port) {
 function safeSendMessage(message, callback) {
   if (!isExtensionActive) {
     console.warn('扩展上下文已失效，无法发送消息');
-    if (callback) callback({error: 'Extension context invalidated'});
+    if (callback) {
+      try {
+        callback({error: 'Extension context invalidated'});
+      } catch (callbackError) {
+        console.error('执行回调时出错:', callbackError);
+      }
+    }
     return;
   }
   
@@ -74,9 +80,21 @@ function safeSendMessage(message, callback) {
         if (chrome.runtime.lastError.message.includes('Extension context invalidated')) {
           handleExtensionInvalidation();
         }
-        if (callback) callback({error: chrome.runtime.lastError.message});
+        if (callback) {
+          try {
+            callback({error: chrome.runtime.lastError.message});
+          } catch (callbackError) {
+            console.error('错误回调执行失败:', callbackError);
+          }
+        }
       } else {
-        if (callback) callback(response);
+        if (callback) {
+          try {
+            callback(response);
+          } catch (callbackError) {
+            console.error('成功回调执行失败:', callbackError);
+          }
+        }
       }
     });
   } catch (error) {
@@ -84,7 +102,13 @@ function safeSendMessage(message, callback) {
     if (error.message.includes('Extension context invalidated')) {
       handleExtensionInvalidation();
     }
-    if (callback) callback({error: error.message});
+    if (callback) {
+      try {
+        callback({error: error.message});
+      } catch (callbackError) {
+        console.error('异常回调执行失败:', callbackError);
+      }
+    }
   }
 }
 
@@ -187,12 +211,21 @@ function createTranslateButton(x, y, textToTranslate) {
       
       // 显示加载中的弹窗（如果尚未显示）
       if (!translationPopup) {
-        showLoadingPopup(x, y);
+        try {
+          showLoadingPopup(x, y);
+        } catch (popupError) {
+          console.error('显示弹窗时出错:', popupError);
+          return;
+        }
       }
       
       // 在弹窗中显示错误
       if (translationPopup && document.body.contains(translationPopup)) {
-        handleTranslation(this.dataset.textToTranslate || '未知文本', `错误: ${error.message || "未知错误"}`);
+        try {
+          handleTranslation(this.dataset.textToTranslate || '未知文本', `错误: ${error.message || "未知错误"}`);
+        } catch (handlingError) {
+          console.error('显示错误信息时出错:', handlingError);
+        }
       }
     }
   };
@@ -201,6 +234,12 @@ function createTranslateButton(x, y, textToTranslate) {
   
   // 点击页面其他位置移除按钮
   document.addEventListener('mousedown', function removeButton(e) {
+    // 如果button已经不存在，移除事件监听器并返回
+    if (!button || !document.body.contains(button)) {
+      document.removeEventListener('mousedown', removeButton);
+      return;
+    }
+    
     if (e.target !== button) {
       if (document.body.contains(button)) {
         console.log('移除翻译按钮');
@@ -253,6 +292,12 @@ function showLoadingPopup(x, y) {
   
   // 点击页面其他位置关闭弹窗
   document.addEventListener('mousedown', function closePopup(e) {
+    // 检查translationPopup是否存在，因为它可能已被移除
+    if (!translationPopup) {
+      document.removeEventListener('mousedown', closePopup);
+      return;
+    }
+    
     if (e.target !== translationPopup && !translationPopup.contains(e.target)) {
       if (document.body.contains(translationPopup)) {
         console.log('关闭翻译弹窗');
@@ -266,86 +311,91 @@ function showLoadingPopup(x, y) {
 
 // 处理翻译结果
 function handleTranslation(originalText, translatedText) {
-  console.log('处理翻译结果, 原文:', originalText.substring(0, 50) + '...');
-  console.log('翻译结果:', translatedText.substring(0, 50) + '...');
+  // 确保参数有效，避免后续的substring操作失败
+  originalText = originalText || '';
+  translatedText = translatedText || '';
   
-  // 如果弹窗存在，更新内容
-  if (translationPopup && document.body.contains(translationPopup)) {
-    console.log('更新弹窗内容');
-    // 清空原有内容
-    translationPopup.innerHTML = '';
-    
-    // 原文
-    const original = document.createElement('div');
-    original.className = 'llm-original-text';
-    original.style.fontSize = '14px';
-    original.style.color = '#666';
-    original.style.marginBottom = '8px';
-    original.style.borderBottom = '1px solid #eee';
-    original.style.paddingBottom = '8px';
-    
-    // 截断过长的原文
-    if (originalText.length > 100) {
-      original.textContent = originalText.substring(0, 100) + '...';
-    } else {
-      original.textContent = originalText;
-    }
-    
-    // 翻译结果
-    const result = document.createElement('div');
-    result.className = 'llm-translated-text';
-    result.style.fontSize = '14px';
-    result.style.color = '#333';
-    result.style.marginBottom = '10px';
-    result.textContent = translatedText;
-    
-    // 控制按钮容器
-    const controls = document.createElement('div');
-    controls.style.display = 'flex';
-    controls.style.justifyContent = 'space-between';
-    controls.style.marginTop = '10px';
-    
-    // 复制按钮
-    const copyBtn = document.createElement('button');
-    copyBtn.textContent = '复制结果';
-    copyBtn.style.backgroundColor = '#f0f0f0';
-    copyBtn.style.border = 'none';
-    copyBtn.style.padding = '5px 10px';
-    copyBtn.style.borderRadius = '4px';
-    copyBtn.style.cursor = 'pointer';
-    copyBtn.onclick = function() {
-      console.log('复制翻译结果');
-      navigator.clipboard.writeText(translatedText)
-        .then(() => {
-          copyBtn.textContent = '已复制';
-          setTimeout(() => {
-            copyBtn.textContent = '复制结果';
-          }, 1500);
-        });
-    };
-    
-    // 关闭按钮
-    const closeBtn = document.createElement('button');
-    closeBtn.textContent = '关闭';
-    closeBtn.style.backgroundColor = '#f0f0f0';
-    closeBtn.style.border = 'none';
-    closeBtn.style.padding = '5px 10px';
-    closeBtn.style.borderRadius = '4px';
-    closeBtn.style.cursor = 'pointer';
-    closeBtn.onclick = function() {
-      console.log('关闭翻译弹窗');
-      document.body.removeChild(translationPopup);
-      translationPopup = null;
-    };
-    
-    controls.appendChild(copyBtn);
-    controls.appendChild(closeBtn);
-    
-    // 添加到弹窗
-    translationPopup.appendChild(original);
-    translationPopup.appendChild(result);
-    translationPopup.appendChild(controls);
-  } else {
-    console.warn('翻译弹窗不存在或已被移除');
+  console.log('处理翻译结果, 原文:', originalText.substring(0, 50) + (originalText.length > 50 ? '...' : ''));
+  console.log('翻译结果:', translatedText.substring(0, 50) + (translatedText.length > 50 ? '...' : ''));
+  
+  // 如果弹窗不存在，尝试创建一个新的弹窗
+  if (!translationPopup || !document.body.contains(translationPopup)) {
+    console.warn('翻译弹窗不存在或已被移除，无法更新内容');
+    return;
   }
+  
+  console.log('更新弹窗内容');
+  // 清空原有内容
+  translationPopup.innerHTML = '';
+  
+  // 原文
+  const original = document.createElement('div');
+  original.className = 'llm-original-text';
+  original.style.fontSize = '14px';
+  original.style.color = '#666';
+  original.style.marginBottom = '8px';
+  original.style.borderBottom = '1px solid #eee';
+  original.style.paddingBottom = '8px';
+  
+  // 截断过长的原文
+  if (originalText.length > 100) {
+    original.textContent = originalText.substring(0, 100) + '...';
+  } else {
+    original.textContent = originalText;
+  }
+  
+  // 翻译结果
+  const result = document.createElement('div');
+  result.className = 'llm-translated-text';
+  result.style.fontSize = '14px';
+  result.style.color = '#333';
+  result.style.marginBottom = '10px';
+  result.textContent = translatedText;
+  
+  // 控制按钮容器
+  const controls = document.createElement('div');
+  controls.style.display = 'flex';
+  controls.style.justifyContent = 'space-between';
+  controls.style.marginTop = '10px';
+  
+  // 复制按钮
+  const copyBtn = document.createElement('button');
+  copyBtn.textContent = '复制结果';
+  copyBtn.style.backgroundColor = '#f0f0f0';
+  copyBtn.style.border = 'none';
+  copyBtn.style.padding = '5px 10px';
+  copyBtn.style.borderRadius = '4px';
+  copyBtn.style.cursor = 'pointer';
+  copyBtn.onclick = function() {
+    console.log('复制翻译结果');
+    navigator.clipboard.writeText(translatedText)
+      .then(() => {
+        copyBtn.textContent = '已复制';
+        setTimeout(() => {
+          copyBtn.textContent = '复制结果';
+        }, 1500);
+      });
+  };
+  
+  // 关闭按钮
+  const closeBtn = document.createElement('button');
+  closeBtn.textContent = '关闭';
+  closeBtn.style.backgroundColor = '#f0f0f0';
+  closeBtn.style.border = 'none';
+  closeBtn.style.padding = '5px 10px';
+  closeBtn.style.borderRadius = '4px';
+  closeBtn.style.cursor = 'pointer';
+  closeBtn.onclick = function() {
+    console.log('关闭翻译弹窗');
+    document.body.removeChild(translationPopup);
+    translationPopup = null;
+  };
+  
+  controls.appendChild(copyBtn);
+  controls.appendChild(closeBtn);
+  
+  // 添加到弹窗
+  translationPopup.appendChild(original);
+  translationPopup.appendChild(result);
+  translationPopup.appendChild(controls);
 } 
