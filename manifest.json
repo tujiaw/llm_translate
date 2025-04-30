@@ -34,7 +34,8 @@
       "matches": ["<all_urls>"],
       "js": ["content.js"],
       "css": ["content.css"],
-      "run_at": "document_end"
+      "run_at": "document_end",
+      "type": "module"
     }
   ],
   "background": {
@@ -43,7 +44,15 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["images/*.svg"],
+      "resources": [
+        "api.js",
+        "config.js",
+        "ui.js",
+        "messaging.js",
+        "utils.js",
+        "translator.js",
+        "images/*.svg"
+      ],
       "matches": ["<all_urls>"]
     }
   ]
