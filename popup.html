@@ -12,19 +12,19 @@
     <div class="translation-area">
       <textarea id="inputText" placeholder="输入要翻译的文本..."></textarea>
       <div class="controls">
-        <button id="translateBtn">翻译</button>
+        <button id="translateBtn">Translate</button>
         <div class="spinner" id="loadingSpinner"></div>
       </div>
       <div class="result-container">
-        <textarea id="outputText" placeholder="翻译结果..." readonly></textarea>
-        <button id="copyBtn" title="复制结果"><img src="images/copy.svg" alt="复制"></button>
+        <textarea id="outputText" placeholder="Translation result..." readonly></textarea>
+        <button id="copyBtn" title="Copy result"><img src="images/copy.svg" alt="Copy"></button>
       </div>
     </div>
 
     <div class="settings-section">
-      <h2>设置</h2>
+      <h2>Settings</h2>
       <div class="model-selection">
-        <label for="modelSelect">选择模型:</label>
+        <label for="modelSelect">Select Model:</label>
         <select id="modelSelect">
           <option value="gpt-3.5-turbo">GPT-3.5 Turbo</option>
           <option value="gpt-4">GPT-4</option>
@@ -32,36 +32,36 @@
           <option value="claude-3-sonnet-20240229">Claude 3 Sonnet</option>
           <option value="claude-3-haiku-20240307">Claude 3 Haiku</option>
           <option value="gemini-pro">Gemini Pro</option>
-          <option value="THUDM/GLM-4-9B-0414">GLM-4-9B (免费)</option>
-          <option value="Qwen/Qwen2.5-7B-Instruct">Qwen2.5-7B (免费)</option>
-          <option value="Qwen/Qwen2.5-Coder-7B-Instruct">Qwen2.5-Coder-7B (免费)</option>
-          <option value="THUDM/glm-4-9b-chat">GLM-4-9B-Chat (免费)</option>
-          <option value="custom">自定义...</option>
+          <option value="THUDM/GLM-4-9B-0414">GLM-4-9B (Free)</option>
+          <option value="Qwen/Qwen2.5-7B-Instruct">Qwen2.5-7B (Free)</option>
+          <option value="Qwen/Qwen2.5-Coder-7B-Instruct">Qwen2.5-Coder-7B (Free)</option>
+          <option value="THUDM/glm-4-9b-chat">GLM-4-9B-Chat (Free)</option>
+          <option value="custom">Custom...</option>
         </select>
       </div>
       
       <div id="customModelConfig" class="hidden">
-        <input type="text" id="customModelName" placeholder="模型名称">
-        <input type="text" id="customModelEndpoint" placeholder="API端点">
+        <input type="text" id="customModelName" placeholder="Model Name">
+        <input type="text" id="customModelEndpoint" placeholder="API Endpoint">
       </div>
       
       <div class="api-key">
-        <label for="apiKey">API密钥:</label>
+        <label for="apiKey">API Key:</label>
         <div class="key-input-container">
-          <input type="password" id="apiKey" placeholder="输入API密钥">
-          <button id="showKeyBtn">显示</button>
+          <input type="password" id="apiKey" placeholder="Enter API Key">
+          <button id="showKeyBtn">Show</button>
         </div>
       </div>
       
-      <button id="saveSettingsBtn">保存设置</button>
+      <button id="saveSettingsBtn">Save Settings</button>
     </div>
     
     <div class="help-section">
-      <h3>使用提示</h3>
+      <h3>Usage Tips</h3>
       <ul>
-        <li>选择文本后右键点击可直接翻译</li>
-        <li>自动检测中英文并互译</li>
-        <li>可在设置中配置不同的模型</li>
+        <li>Right-click on selected text to translate directly</li>
+        <li>Auto-detect Chinese and English for translation</li>
+        <li>Configure different models in settings</li>
       </ul>
     </div>
   </div>

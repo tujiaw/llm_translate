@@ -21,7 +21,7 @@ class UiService {
     
     const button = document.createElement('div');
     button.className = 'llm-translate-button';
-    button.innerText = '翻译';
+    button.innerText = 'Go';
     
     // 按钮样式
     button.style.position = 'absolute';
@@ -206,7 +206,7 @@ class UiService {
     
     // 复制按钮
     const copyBtn = document.createElement('button');
-    copyBtn.textContent = '复制结果';
+    copyBtn.textContent = 'Copy';
     copyBtn.style.backgroundColor = '#f0f0f0';
     copyBtn.style.border = 'none';
     copyBtn.style.padding = '5px 10px';
@@ -215,16 +215,16 @@ class UiService {
     copyBtn.onclick = function() {
       navigator.clipboard.writeText(translatedText)
         .then(() => {
-          copyBtn.textContent = '已复制';
+          copyBtn.textContent = 'Copied';
           setTimeout(() => {
-            copyBtn.textContent = '复制结果';
+            copyBtn.textContent = 'Copy';
           }, 1500);
         });
     };
     
     // 关闭按钮
     const closeBtn = document.createElement('button');
-    closeBtn.textContent = '关闭';
+    closeBtn.textContent = 'Close';
     closeBtn.style.backgroundColor = '#f0f0f0';
     closeBtn.style.border = 'none';
     closeBtn.style.padding = '5px 10px';

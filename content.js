@@ -40,6 +40,20 @@
     // 设置文本选择监听器
     setupTextSelectionListener();
     
+    // 显示/隐藏API密钥按钮点击事件
+    elements.showKeyBtn.addEventListener('click', () => toggleApiKeyVisibility(elements));
+    
+    // 保存设置按钮点击事件
+    elements.saveSettingsBtn.addEventListener('click', () => saveSettings(elements));
+    
+    // 模型选择变化事件
+    elements.modelSelect.addEventListener('change', () => toggleCustomModelConfig(elements));
+    
+    // 文本输入变化事件，用于启用/禁用翻译按钮
+    elements.inputText.addEventListener('input', () => {
+      elements.translateBtn.disabled = !elements.inputText.value.trim();
+    });
+    
     /**
      * 设置消息监听器
      */

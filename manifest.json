@@ -51,7 +51,8 @@
         "messaging.js",
         "utils.js",
         "translator.js",
-        "images/*.svg"
+        "images/*.svg",
+        "images/*.png"
       ],
       "matches": ["<all_urls>"]
     }
