@@ -1,5 +1,5 @@
-// popup.js - 弹出窗口脚本
-// 使用动态导入获取模块
+// popup.js - Popup window script
+// Use dynamic imports to get modules
 document.addEventListener('DOMContentLoaded', async function() {
   try {
     const [configModule, translatorModule, uiModule, messagingModule, utilsModule, apiModule] = await Promise.all([
@@ -18,23 +18,23 @@ document.addEventListener('DOMContentLoaded', async function() {
     const Utils = utilsModule.default;
     const ApiService = apiModule.default;
     
-    console.log('初始化弹出窗口');
+    console.log('Initializing popup window');
     
-    // 获取DOM元素
+    // Get DOM elements
     const elements = getDomElements();
     
-    // 从存储中加载设置
+    // Load settings from storage
     await loadSettings(elements);
     
-    // 设置事件监听器
+    // Set up event listeners
     setupEventListeners(elements);
     
-    // 检查是否有选中的文本传递过来
+    // Check if there is selected text passed over
     await checkForSelectedText(elements);
     
     /**
-     * 获取DOM元素
-     * @returns {object} DOM元素对象
+     * Get DOM elements
+     * @returns {object} DOM elements object
      */
     function getDomElements() {
       return {
@@ -54,31 +54,31 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     
     /**
-     * 加载配置设置
-     * @param {object} elements - DOM元素对象
+     * Load configuration settings
+     * @param {object} elements - DOM elements object
      */
     async function loadSettings(elements) {
       try {
-        console.log('加载设置...');
+        console.log('Loading settings...');
         const config = await ConfigService.load();
-        console.log('已加载设置:', { ...config, apiKey: '******' });
+        console.log('Settings loaded:', { ...config, apiKey: '******' });
         
         elements.modelSelect.value = config.model;
         elements.customModelName.value = config.customModelName;
         elements.customModelEndpoint.value = config.customModelEndpoint;
         elements.apiKey.value = config.apiKey;
         
-        // 根据当前选择的模型显示/隐藏自定义模型配置
+        // Show/hide custom model configuration based on current selection
         toggleCustomModelConfig(elements);
       } catch (error) {
-        console.error('加载设置时出错:', error);
-        UiService.showNotification('加载设置时出错: ' + error.message, 'error');
+        console.error('Error loading settings:', error);
+        UiService.showNotification('Error loading settings: ' + error.message, 'error');
       }
     }
     
     /**
-     * 切换显示/隐藏自定义模型配置
-     * @param {object} elements - DOM元素对象
+     * Toggle show/hide custom model configuration
+     * @param {object} elements - DOM elements object
      */
     function toggleCustomModelConfig(elements) {
       if (elements.modelSelect.value === 'custom') {
@@ -89,41 +89,41 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     
     /**
-     * 设置事件监听器
-     * @param {object} elements - DOM元素对象
+     * Set up event listeners
+     * @param {object} elements - DOM elements object
      */
     function setupEventListeners(elements) {
-      // 翻译按钮点击事件
+      // Translate button click event
       elements.translateBtn.addEventListener('click', () => translateText(elements));
       
-      // 复制按钮点击事件
+      // Copy button click event
       elements.copyBtn.addEventListener('click', () => copyToClipboard(elements));
       
-      // 显示/隐藏API密钥按钮点击事件
+      // Show/hide API key button click event
       elements.showKeyBtn.addEventListener('click', () => toggleApiKeyVisibility(elements));
       
-      // 保存设置按钮点击事件
+      // Save settings button click event
       elements.saveSettingsBtn.addEventListener('click', () => saveSettings(elements));
       
-      // 模型选择变化事件
+      // Model selection change event
       elements.modelSelect.addEventListener('change', () => toggleCustomModelConfig(elements));
       
-      // 文本输入变化事件，用于启用/禁用翻译按钮
+      // Text input change event, used to enable/disable translate button
       elements.inputText.addEventListener('input', () => {
         elements.translateBtn.disabled = !elements.inputText.value.trim();
       });
     }
     
     /**
-     * 检查是否有选中的文本要传递过来
-     * @param {object} elements - DOM元素对象
+     * Check if there is selected text to be passed over
+     * @param {object} elements - DOM elements object
      */
     async function checkForSelectedText(elements) {
       try {
-        // 查询当前活动标签
+        // Query current active tab
         const tabs = await chrome.tabs.query({active: true, currentWindow: true});
         
-        // 发送消息获取选中的文本
+        // Send message to get selected text
         chrome.tabs.sendMessage(tabs[0].id, {action: "getSelectedText"}, function(response) {
           if (response && response.selectedText) {
             elements.inputText.value = response.selectedText;
@@ -131,58 +131,58 @@ document.addEventListener('DOMContentLoaded', async function() {
           }
         });
       } catch (error) {
-        console.error('获取选中文本时出错:', error);
+        console.error('Error getting selected text:', error);
       }
     }
     
     /**
-     * 翻译文本
-     * @param {object} elements - DOM元素对象
+     * Translate text
+     * @param {object} elements - DOM elements object
      */
     async function translateText(elements) {
-      console.log('开始翻译...');
+      console.log('Starting translation...');
       const text = elements.inputText.value.trim();
       
       if (!text) {
-        console.log('没有输入文本，翻译取消');
+        console.log('No input text, translation cancelled');
         return;
       }
       
       try {
-        // 显示加载状态
+        // Show loading state
         elements.loadingSpinner.style.display = 'block';
         elements.translateBtn.disabled = true;
         
-        // 加载配置
+        // Load configuration
         const config = await ConfigService.load();
         
-        // 验证API密钥
+        // Validate API key
         if (!config.apiKey) {
-          console.log('错误: API密钥未设置');
-          elements.outputText.value = '错误：请在设置中配置API密钥';
+          console.log('Error: API key not set');
+          elements.outputText.value = 'Error: Please configure API key in settings';
           return;
         }
         
-        // 发送API请求并获取翻译结果
+        // Send API request and get translation result
         const isChineseQuery = Utils.isChineseText(text);
-        console.log('是否中文查询:', isChineseQuery);
+        console.log('Is Chinese query:', isChineseQuery);
         
         try {
-          // 创建请求配置
+          // Create request configuration
           const { apiEndpoint, requestBody } = ApiService.createRequestConfig(
             config,
             text,
             isChineseQuery
           );
           
-          console.log('使用API端点:', apiEndpoint);
+          console.log('Using API endpoint:', apiEndpoint);
           
-          // 验证API端点
+          // Validate API endpoint
           if (!ApiService.validateApiEndpoint(apiEndpoint)) {
-            throw new Error(`无效的API端点: "${apiEndpoint}"`);
+            throw new Error(`Invalid API endpoint: "${apiEndpoint}"`);
           }
           
-          // 发送API请求
+          // Send API request
           const response = await fetch(apiEndpoint, {
             method: 'POST',
             headers: {
@@ -193,52 +193,52 @@ document.addEventListener('DOMContentLoaded', async function() {
           });
           
           if (!response.ok) {
-            throw new Error(`API请求失败: ${response.status}`);
+            throw new Error(`API request failed: ${response.status}`);
           }
           
           const data = await response.json();
           
-          // 解析响应
+          // Parse response
           const translatedText = ApiService.parseApiResponse(data, config.model);
           elements.outputText.value = translatedText;
         } catch (error) {
-          console.error('翻译过程中出错:', error);
-          elements.outputText.value = `翻译时出错: ${error.message}`;
+          console.error('Error during translation:', error);
+          elements.outputText.value = `Translation error: ${error.message}`;
         }
       } catch (error) {
-        console.error('翻译出错:', error);
-        elements.outputText.value = `翻译时出错: ${error.message}`;
+        console.error('Translation error:', error);
+        elements.outputText.value = `Translation error: ${error.message}`;
       } finally {
-        // 恢复UI状态
+        // Restore UI state
         elements.loadingSpinner.style.display = 'none';
         elements.translateBtn.disabled = false;
       }
     }
     
     /**
-     * 切换API密钥可见性
-     * @param {object} elements - DOM元素对象
+     * Toggle API key visibility
+     * @param {object} elements - DOM elements object
      */
     function toggleApiKeyVisibility(elements) {
       if (elements.apiKey.type === 'password') {
         elements.apiKey.type = 'text';
-        elements.showKeyBtn.textContent = '隐藏';
+        elements.showKeyBtn.textContent = 'Hide';
       } else {
         elements.apiKey.type = 'password';
-        elements.showKeyBtn.textContent = '显示';
+        elements.showKeyBtn.textContent = 'Show';
       }
     }
     
     /**
-     * 复制翻译结果到剪贴板
-     * @param {object} elements - DOM元素对象
+     * Copy translation result to clipboard
+     * @param {object} elements - DOM elements object
      */
     function copyToClipboard(elements) {
       const text = elements.outputText.value;
       if (!text) return;
       
       navigator.clipboard.writeText(text).then(() => {
-        // 显示复制成功提示
+        // Show copy success notification
         const original = elements.copyBtn.innerHTML;
         elements.copyBtn.innerHTML = '<img src="images/check.svg" alt="Copied">';
         
@@ -247,7 +247,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }, 1500);
       }).catch(err => {
         console.error('Failed to copy text: ', err);
-        // 如果复制失败，尝试使用旧的复制方法
+        // If copy fails, try using the old copy method
         elements.outputText.select();
         document.execCommand('copy');
         elements.copyBtn.innerHTML = '<img src="images/check.svg" alt="Copied">';
@@ -258,8 +258,8 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     
     /**
-     * 保存设置
-     * @param {object} elements - DOM元素对象
+     * Save settings
+     * @param {object} elements - DOM elements object
      */
     async function saveSettings(elements) {
       try {
@@ -268,11 +268,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         const customModelEndpoint = elements.customModelEndpoint.value;
         const apiKey = elements.apiKey.value;
         
-        console.log('保存设置:', {
+        console.log('Saving settings:', {
           model: model,
           customModelName: customModelName,
           customModelEndpoint: customModelEndpoint,
-          apiKey: '******' // 隐藏实际密钥
+          apiKey: '******' // Hide actual key
         });
         
         await ConfigService.save({
@@ -280,13 +280,13 @@ document.addEventListener('DOMContentLoaded', async function() {
           customModelName: customModelName,
           customModelEndpoint: customModelEndpoint,
           apiKey: apiKey,
-          // 保持默认API端点不变
+          // Keep default API endpoint unchanged
           defaultApiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
         });
         
-        // 显示保存成功提示
+        // Show save success notification
         const saveStatus = document.createElement('div');
-        saveStatus.textContent = '设置已保存';
+        saveStatus.textContent = 'Settings saved';
         saveStatus.style.color = 'green';
         saveStatus.style.textAlign = 'center';
         saveStatus.style.marginTop = '5px';
@@ -297,17 +297,17 @@ document.addEventListener('DOMContentLoaded', async function() {
           saveStatus.remove();
         }, 2000);
         
-        console.log('设置已保存成功');
+        console.log('Settings saved successfully');
       } catch (error) {
-        console.error('保存设置时出错:', error);
-        UiService.showNotification('保存设置时出错: ' + error.message, 'error');
+        console.error('Error saving settings:', error);
+        UiService.showNotification('Error saving settings: ' + error.message, 'error');
       }
     }
   } catch (error) {
-    console.error('加载模块时出错:', error);
+    console.error('Error loading modules:', error);
     document.body.innerHTML = `<div style="color: red; padding: 20px;">
-      加载模块时出错: ${error.message}
-      <p>请尝试重新加载扩展或联系开发者</p>
+      Error loading modules: ${error.message}
+      <p>Please try reloading the extension or contact the developer</p>
     </div>`;
   }
 }); 
