@@ -7,6 +7,7 @@
 - 使用大模型API进行高质量翻译
 - 中英文互译，自动判断语言类型
 - 提供多种主流大模型支持（OpenAI、Claude、Gemini等）
+- 内置免费模型支持，无需自行寻找API（GLM-4、Qwen2等）
 - 支持选择文本后直接弹出翻译按钮
 - 右键菜单快速翻译
 - 可自定义API和模型配置
@@ -32,7 +33,7 @@
 
 1. 点击浏览器右上角的插件图标，打开弹出窗口
 2. 在设置区域选择要使用的大模型
-3. 输入对应的API密钥
+3. 输入对应的API密钥（默认已配置免费模型API密钥）
 4. 点击"保存设置"
 
 ### 翻译方式
@@ -45,10 +46,19 @@
 
 ### 支持的模型
 
+#### 付费模型
 - OpenAI: GPT-3.5 Turbo, GPT-4
 - Anthropic: Claude 3
 - Google: Gemini Pro
-- 自定义模型: 支持配置自定义API端点
+
+#### 免费模型
+- THUDM/GLM-4-9B-0414
+- Qwen/Qwen2.5-7B-Instruct
+- Qwen/Qwen2.5-Coder-7B-Instruct
+- THUDM/glm-4-9b-chat
+
+#### 自定义
+- 支持配置自定义API端点和模型
 
 ## 开发说明
 
@@ -69,16 +79,21 @@
     ├── icon128.png
     ├── copy.svg
     ├── check.svg
-    └── generate_icons.html
+    └── icon128.svg
 ```
 
 ### 图标生成
 
-在使用插件前，需要生成PNG格式的图标：
+在使用插件前，需要生成PNG格式的图标。您可以使用在线SVG到PNG转换工具，将images目录下的SVG文件转换为相应大小的PNG图标。
 
-1. 打开 `images/generate_icons.html` 在浏览器中
-2. 使用页面下载按钮生成所需的16x16、48x48和128x128像素图标
-3. 将图标放置在 `images/` 目录中
+## 免费模型说明
+
+本插件预配置了几个免费模型和API密钥，无需额外配置即可使用：
+
+- GLM-4系列：THUDM开源的轻量级大模型，已预先配置
+- Qwen2.5系列：阿里开源的通用大模型，包含普通版和代码版
+
+默认API端点：`https://api.siliconflow.cn/v1/chat/completions`
 
 ## 许可证
 

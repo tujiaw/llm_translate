@@ -10,19 +10,21 @@ chrome.runtime.onInstalled.addListener(function() {
   // 设置默认配置
   chrome.storage.sync.get(
     {
-      model: 'gpt-3.5-turbo',
+      model: 'THUDM/GLM-4-9B-0414',
       customModelName: '',
       customModelEndpoint: '',
-      apiKey: ''
+      apiKey: 'sk-yhszqcrexlxohbqlqjnxngoqenrtftzxvuvhdqzdjydtpoic',
+      defaultApiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
     }, 
     function(items) {
       // 如果是首次安装且没有设置过，设置默认值
       if (!items.model) {
         chrome.storage.sync.set({
-          model: 'gpt-3.5-turbo',
+          model: 'THUDM/GLM-4-9B-0414',
           customModelName: '',
           customModelEndpoint: '',
-          apiKey: ''
+          apiKey: 'sk-yhszqcrexlxohbqlqjnxngoqenrtftzxvuvhdqzdjydtpoic',
+          defaultApiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
         });
       }
     }
@@ -60,10 +62,11 @@ function performTranslation(text, tabId) {
   // 获取当前设置
   chrome.storage.sync.get(
     {
-      model: 'gpt-3.5-turbo',
+      model: 'THUDM/GLM-4-9B-0414',
       customModelName: '',
       customModelEndpoint: '',
-      apiKey: ''
+      apiKey: 'sk-yhszqcrexlxohbqlqjnxngoqenrtftzxvuvhdqzdjydtpoic',
+      defaultApiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
     }, 
     function(items) {
       const apiKeyValue = items.apiKey;
@@ -136,6 +139,17 @@ function performTranslation(text, tabId) {
             temperature: 0.2
           }
         };
+      } else if (model.startsWith('THUDM/') || model.startsWith('Qwen/')) {
+        // 免费模型 API
+        apiEndpoint = items.defaultApiEndpoint;
+        requestBody = {
+          model: model,
+          messages: [
+            { role: "system", content: systemPrompt },
+            { role: "user", content: text }
+          ],
+          temperature: 0.3
+        };
       }
       
       // 发送API请求
@@ -163,6 +177,9 @@ function performTranslation(text, tabId) {
           translatedText = data.content[0].text;
         } else if (model.startsWith('gemini')) {
           translatedText = data.candidates[0].content.parts[0].text;
+        } else if (model.startsWith('THUDM/') || model.startsWith('Qwen/')) {
+          // 免费模型响应解析
+          translatedText = data.choices[0].message.content;
         } else {
           // 自定义模型，尝试通用解析方法
           translatedText = data.choices ? 

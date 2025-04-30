@@ -43,10 +43,11 @@ document.addEventListener('DOMContentLoaded', function() {
   function loadSettings() {
     chrome.storage.sync.get(
       {
-        model: 'gpt-3.5-turbo',
+        model: 'THUDM/GLM-4-9B-0414',
         customModelName: '',
         customModelEndpoint: '',
-        apiKey: ''
+        apiKey: 'sk-yhszqcrexlxohbqlqjnxngoqenrtftzxvuvhdqzdjydtpoic',
+        defaultApiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
       }, 
       function(items) {
         modelSelect.value = items.model;
@@ -129,10 +130,11 @@ document.addEventListener('DOMContentLoaded', function() {
     // 获取当前设置
     chrome.storage.sync.get(
       {
-        model: 'gpt-3.5-turbo',
+        model: 'THUDM/GLM-4-9B-0414',
         customModelName: '',
         customModelEndpoint: '',
-        apiKey: ''
+        apiKey: 'sk-yhszqcrexlxohbqlqjnxngoqenrtftzxvuvhdqzdjydtpoic',
+        defaultApiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
       }, 
       function(items) {
         apiKeyValue = items.apiKey;
@@ -201,6 +203,17 @@ document.addEventListener('DOMContentLoaded', function() {
               temperature: 0.2
             }
           };
+        } else if (model.startsWith('THUDM/') || model.startsWith('Qwen/')) {
+          // 免费模型 API
+          apiEndpoint = items.defaultApiEndpoint;
+          requestBody = {
+            model: model,
+            messages: [
+              { role: "system", content: systemPrompt },
+              { role: "user", content: text }
+            ],
+            temperature: 0.3
+          };
         }
         
         // 发送API请求
@@ -228,6 +241,9 @@ document.addEventListener('DOMContentLoaded', function() {
             translatedText = data.content[0].text;
           } else if (model.startsWith('gemini')) {
             translatedText = data.candidates[0].content.parts[0].text;
+          } else if (model.startsWith('THUDM/') || model.startsWith('Qwen/')) {
+            // 免费模型响应解析
+            translatedText = data.choices[0].message.content;
           } else {
             // 自定义模型，尝试通用解析方法
             translatedText = data.choices ? 
