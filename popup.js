@@ -240,8 +240,17 @@ document.addEventListener('DOMContentLoaded', async function() {
       navigator.clipboard.writeText(text).then(() => {
         // 显示复制成功提示
         const original = elements.copyBtn.innerHTML;
-        elements.copyBtn.innerHTML = '<img src="images/check.svg" alt="已复制">';
+        elements.copyBtn.innerHTML = '<img src="images/check.svg" alt="Copied">';
         
+        setTimeout(() => {
+          elements.copyBtn.innerHTML = original;
+        }, 1500);
+      }).catch(err => {
+        console.error('Failed to copy text: ', err);
+        // 如果复制失败，尝试使用旧的复制方法
+        elements.outputText.select();
+        document.execCommand('copy');
+        elements.copyBtn.innerHTML = '<img src="images/check.svg" alt="Copied">';
         setTimeout(() => {
           elements.copyBtn.innerHTML = original;
         }, 1500);

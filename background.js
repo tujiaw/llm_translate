@@ -100,30 +100,30 @@ function performTranslation(text, tabId) {
   console.log('执行翻译操作，文本:', text, '标签ID:', tabId);
   
   if (!text || text.trim() === '') {
-    console.log('文本为空，取消翻译');
+    console.log('Text is empty, translation cancelled');
     return;
   }
   
-  // 加载配置
+  // Load configuration
   ConfigService.load().then(config => {
     
-    // 验证API密钥
+    // Validate API key
     if (!config.apiKey) {
-      console.log('错误: API密钥未设置');
-      // 如果没有API密钥，通知用户设置
+      console.log('Error: API key not set');
+      // If no API key, notify user to set it
       if (tabId) {
         chrome.tabs.sendMessage(tabId, {
           action: "translate",
           text: text,
-          result: "请先在插件设置中配置API密钥"
+          result: "Please configure API key in extension settings first"
         });
       }
       return;
     }
     
-    // 检测语言
+    // Detect language
     const isChineseQuery = /[\u4e00-\u9fa5]/.test(text);
-    console.log('是否中文查询:', isChineseQuery);
+    console.log('Is Chinese query:', isChineseQuery);
     
     try {
       // 使用ApiService创建请求配置

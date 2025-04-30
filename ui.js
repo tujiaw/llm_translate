@@ -255,7 +255,7 @@ class UiService {
     return this.updatePopupWithTranslation(
       popup, 
       originalText, 
-      `错误: ${errorMessage}`
+      `Error: ${errorMessage}`
     );
   }
 

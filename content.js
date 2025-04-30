@@ -99,14 +99,14 @@
      * @param {MouseEvent} event - 鼠标事件
      */
     function handleTextSelection(event) {
-      // 获取当前选中的文本
+      // Get currently selected text
       selectedText = window.getSelection().toString().trim();
       
       if (selectedText) {
-        console.log('选中文本:', selectedText);
+        console.log('Selected text:', selectedText);
       }
       
-      // 检查是否存在翻译弹窗，如果有则移除
+      // Check if translation popup exists, remove it if it does
       if (translationPopup) {
         if (document.body.contains(translationPopup)) {
           document.body.removeChild(translationPopup);
@@ -114,11 +114,11 @@
         translationPopup = null;
       }
       
-      // 如果有选中的文本，创建快速翻译按钮
+      // If there is selected text, create quick translation button
       if (selectedText.length > 0) {
         const x = event.pageX || event.clientX + window.scrollX;
         const y = event.pageY || event.clientY + window.scrollY;
-        console.log('创建翻译按钮，位置:', x, y);
+        console.log('Creating translation button at position:', x, y);
         createTranslateButton(x, y, selectedText);
       }
     }
@@ -133,8 +133,8 @@
       const onTranslateClick = (text, btnX, btnY) => {
         showLoadingPopup(btnX, btnY);
         
-        // 通知后台脚本进行翻译
-        console.log('发送翻译请求到后台脚本, 文本:', text);
+        // Notify background script to perform translation
+        console.log('Sending translation request to background script, text:', text);
         sendTranslationRequest(text).catch(error => {
           if (translationPopup && document.body.contains(translationPopup)) {
             UiService.showError(translationPopup, text, error.message);
@@ -142,7 +142,7 @@
         });
       };
       
-      // 使用UI服务创建按钮
+      // Use UI service to create button
       UiService.createTranslateButton(x, y, textToTranslate, onTranslateClick);
     }
     
@@ -152,7 +152,7 @@
      * @param {number} y - Y坐标
      */
     function showLoadingPopup(x, y) {
-      console.log('显示加载中弹窗，位置:', x, y);
+      console.log('Showing loading popup at position:', x, y);
       translationPopup = UiService.createLoadingPopup(x, y);
     }
     
@@ -168,7 +168,7 @@
           text: text
         });
       } catch (error) {
-        console.error('发送翻译请求时出错:', error);
+        console.error('Error sending translation request:', error);
         throw error;
       }
     }
@@ -179,18 +179,18 @@
      * @param {string} translatedText - 翻译结果
      */
     function handleTranslation(originalText, translatedText) {
-      // 确保参数有效，避免后续操作失败
+      // Ensure parameters are valid to avoid subsequent operation failures
       originalText = originalText || '';
       translatedText = translatedText || '';
       
-      console.log('处理翻译结果, 原文:', Utils.truncateText(originalText, 50));
-      console.log('翻译结果:', Utils.truncateText(translatedText, 50));
+      console.log('Processing translation result, original:', Utils.truncateText(originalText, 50));
+      console.log('Translation result:', Utils.truncateText(translatedText, 50));
       
-      // 使用UI服务更新弹窗内容
+      // Use UI service to update popup content
       if (translationPopup && document.body.contains(translationPopup)) {
         UiService.updatePopupWithTranslation(translationPopup, originalText, translatedText);
       } else {
-        console.warn('翻译弹窗不存在或已被移除，无法更新内容');
+        console.warn('Translation popup does not exist or has been removed, cannot update content');
       }
     }
     
@@ -199,7 +199,7 @@
      */
     function handleExtensionInvalidation() {
       isExtensionActive = false;
-      console.warn('扩展上下文已失效，某些功能可能无法正常工作');
+      console.warn('Extension context invalidated, some features may not work properly');
     }
     
     // 监听扩展上下文失效错误
