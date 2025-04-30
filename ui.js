@@ -157,7 +157,132 @@ class UiService {
     
     document.addEventListener('mousedown', closePopupHandler);
     
+    // 复制按钮
+    const copyBtn = document.createElement('button');
+    copyBtn.textContent = 'Copy';
+    copyBtn.style.backgroundColor = '#f0f0f0';
+    copyBtn.style.border = 'none';
+    copyBtn.style.padding = '5px 10px';
+    copyBtn.style.borderRadius = '4px';
+    copyBtn.style.cursor = 'pointer';
+    copyBtn.style.zIndex = '10002';
+    
+    copyBtn.onclick = async function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      
+      try {
+        // 先尝试使用现代API
+        await navigator.clipboard.writeText(translatedText);
+        copyBtn.textContent = 'Copied';
+        setTimeout(() => {
+          copyBtn.textContent = 'Copy';
+        }, 1500);
+      } catch (err) {
+        console.error('Failed to copy using modern API:', err);
+        // 如果现代API失败，尝试使用旧的API
+        try {
+          const textarea = document.createElement('textarea');
+          textarea.value = translatedText;
+          textarea.style.position = 'fixed';
+          textarea.style.opacity = '0';
+          textarea.style.pointerEvents = 'none';
+          document.body.appendChild(textarea);
+          
+          textarea.select();
+          const successful = document.execCommand('copy');
+          document.body.removeChild(textarea);
+          
+          if (successful) {
+            copyBtn.textContent = 'Copied';
+            setTimeout(() => {
+              copyBtn.textContent = 'Copy';
+            }, 1500);
+          } else {
+            throw new Error('Copy failed');
+          }
+        } catch (fallbackErr) {
+          console.error('Failed to copy using fallback method:', fallbackErr);
+          copyBtn.textContent = 'Copy Failed';
+          setTimeout(() => {
+            copyBtn.textContent = 'Copy';
+          }, 1500);
+        }
+      }
+    };
+    
     return popup;
+  }
+
+  /**
+   * 复制文本到剪贴板
+   * @param {string} text - 要复制的文本
+   * @param {HTMLElement} button - 复制按钮元素
+   * @returns {Promise<void>}
+   */
+  static async copyToClipboard(text, button) {
+    try {
+      // 先尝试使用现代API
+      await navigator.clipboard.writeText(text);
+      button.textContent = 'Copied';
+      setTimeout(() => {
+        button.textContent = 'Copy';
+      }, 1500);
+    } catch (err) {
+      console.error('Failed to copy using modern API:', err);
+      // 如果现代API失败，尝试使用旧的API
+      try {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        textarea.style.pointerEvents = 'none';
+        document.body.appendChild(textarea);
+        
+        textarea.select();
+        const successful = document.execCommand('copy');
+        document.body.removeChild(textarea);
+        
+        if (successful) {
+          button.textContent = 'Copied';
+          setTimeout(() => {
+            button.textContent = 'Copy';
+          }, 1500);
+        } else {
+          throw new Error('Copy failed');
+        }
+      } catch (fallbackErr) {
+        console.error('Failed to copy using fallback method:', fallbackErr);
+        button.textContent = 'Copy Failed';
+        setTimeout(() => {
+          button.textContent = 'Copy';
+        }, 1500);
+      }
+    }
+  }
+
+  /**
+   * 创建复制按钮
+   * @param {string} textToCopy - 要复制的文本
+   * @returns {HTMLElement} 创建的按钮元素
+   */
+  static createCopyButton(textToCopy) {
+    const button = document.createElement('button');
+    button.textContent = 'Copy';
+    button.style.backgroundColor = '#f0f0f0';
+    button.style.border = 'none';
+    button.style.padding = '5px 10px';
+    button.style.borderRadius = '4px';
+    button.style.cursor = 'pointer';
+    button.style.zIndex = '10002';
+    
+    button.onclick = async function(e) {
+      e.preventDefault();
+      e.stopPropagation();
+      await UiService.copyToClipboard(textToCopy, button);
+    };
+    
+    return button;
   }
 
   /**
@@ -205,22 +330,7 @@ class UiService {
     controls.style.marginTop = '10px';
     
     // 复制按钮
-    const copyBtn = document.createElement('button');
-    copyBtn.textContent = 'Copy';
-    copyBtn.style.backgroundColor = '#f0f0f0';
-    copyBtn.style.border = 'none';
-    copyBtn.style.padding = '5px 10px';
-    copyBtn.style.borderRadius = '4px';
-    copyBtn.style.cursor = 'pointer';
-    copyBtn.onclick = function() {
-      navigator.clipboard.writeText(translatedText)
-        .then(() => {
-          copyBtn.textContent = 'Copied';
-          setTimeout(() => {
-            copyBtn.textContent = 'Copy';
-          }, 1500);
-        });
-    };
+    const copyBtn = this.createCopyButton(translatedText);
     
     // 关闭按钮
     const closeBtn = document.createElement('button');
