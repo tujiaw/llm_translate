@@ -2,7 +2,6 @@
 
 import ApiService from './api.js';
 import ConfigService from './config.js';
-import Utils from './utils.js';
 
 /**
  * 翻译服务类 - 整合API调用和翻译逻辑
@@ -20,9 +19,6 @@ class TranslatorService {
     
     // 加载配置
     const config = await ConfigService.load();
-    
-    // 检测语言
-    const isChineseQuery = Utils.isChineseText(text);
     
     // 调用API服务执行翻译
     try {

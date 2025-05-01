@@ -340,23 +340,6 @@ document.addEventListener('DOMContentLoaded', async function() {
           }
         };
         
-        // 调试信息
-        console.log('保存前配置:', JSON.stringify({
-          currentModel: currentConfig.currentModel,
-          apiKeys: {
-            'silicon-flow': currentConfig.apiKeys['silicon-flow'] ? '******' : '未设置',
-            'zhipu': currentConfig.apiKeys['zhipu'] ? '******' : '未设置'
-          }
-        }));
-        
-        console.log('保存后配置:', JSON.stringify({
-          currentModel: newConfig.currentModel,
-          apiKeys: {
-            'silicon-flow': newConfig.apiKeys['silicon-flow'] ? '******' : '未设置',
-            'zhipu': newConfig.apiKeys['zhipu'] ? '******' : '未设置'
-          }
-        }));
-        
         // 保存配置
         await ConfigService.save(newConfig);
         

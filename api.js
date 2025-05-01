@@ -34,10 +34,9 @@ class ApiService {
       modelDefinitions: Boolean(config.modelDefinitions)
     }));
     
-    const systemPrompt = isChineseQuery 
-      ? "你是一个翻译助手，请将以下中文文本翻译成英文，保持原文的意思、格式和语气。只输出翻译结果，不要有任何解释或额外内容。" 
-      : "你是一个翻译助手，请将以下英文文本翻译成中文，保持原文的意思、格式和语气。只输出翻译结果，不要有任何解释或额外内容。";
-    
+    const sourceLang = isChineseQuery ? 'Chinese' : 'English';
+    const targetLang = isChineseQuery ? 'English' : 'Chinese';
+    const systemPrompt = `You are a translation assistant. Please translate the following ${sourceLang} text into ${targetLang}, maintaining the original meaning, format, and tone. Output only the translation result without any explanation or additional content.`;
     // 获取当前选择的模型信息
     let modelInfo;
     
