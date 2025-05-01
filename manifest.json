@@ -14,7 +14,9 @@
     "https://api.siliconflow.cn/*",
     "https://api.openai.com/*",
     "https://api.anthropic.com/*",
-    "https://generativelanguage.googleapis.com/*"
+    "https://generativelanguage.googleapis.com/*",
+    "https://cloud.siliconflow.cn/*",
+    "https://open.bigmodel.cn/*"
   ],
   "action": {
     "default_popup": "popup.html",
