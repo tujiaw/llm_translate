@@ -262,12 +262,16 @@ document.addEventListener('DOMContentLoaded', async function() {
      * @param {HTMLElement} buttonElement - 显示/隐藏按钮元素
      */
     function toggleApiKeyVisibility(inputElement, buttonElement) {
+      const imgElement = buttonElement.querySelector('img');
+      
       if (inputElement.type === 'password') {
         inputElement.type = 'text';
-        buttonElement.textContent = 'Hide';
+        imgElement.src = 'images/eye-close.png';
+        imgElement.alt = 'Hide';
       } else {
         inputElement.type = 'password';
-        buttonElement.textContent = 'Show';
+        imgElement.src = 'images/eye.png';
+        imgElement.alt = 'Show';
       }
     }
     
