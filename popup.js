@@ -52,7 +52,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         showZhipuKeyBtn: document.getElementById('showZhipuKeyBtn'),
         showCustomKeyBtn: document.getElementById('showCustomKeyBtn'),
         saveSettingsBtn: document.getElementById('saveSettingsBtn'),
-        loadingSpinner: document.getElementById('loadingSpinner')
+        loadingSpinner: document.getElementById('loadingSpinner'),
+        apiKeyLinks: document.querySelectorAll('.api-key a')
       };
     }
     
@@ -122,6 +123,15 @@ document.addEventListener('DOMContentLoaded', async function() {
       elements.modelSelect.addEventListener('change', () => {
         const selectedModel = elements.modelSelect.value;
         updateUiForSelectedModel(elements, selectedModel);
+      });
+      
+      // 为API密钥链接添加点击事件
+      elements.apiKeyLinks.forEach(link => {
+        link.addEventListener('click', (e) => {
+          e.preventDefault();
+          // 在新标签页中打开链接
+          chrome.tabs.create({ url: link.href });
+        });
       });
     }
     
