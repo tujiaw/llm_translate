@@ -25,27 +25,54 @@
       <h2>Model Selection</h2>
       <div class="model-selection">
         <select id="modelSelect">
-          <option value="THUDM/GLM-4-9B-0414">GLM-4-9B (Free)</option>
-          <option value="Qwen/Qwen2.5-7B-Instruct">Qwen2.5-7B (Free)</option>
-          <option value="Qwen/Qwen2.5-Coder-7B-Instruct">Qwen2.5-Coder-7B (Free)</option>
-          <option value="THUDM/glm-4-9b-chat">GLM-4-9B-Chat (Free)</option>
+          <optgroup label="SiliconFlow免费模型">
+            <option value="glm-4-9b">GLM-4-9B (SiliconFlow)</option>
+            <option value="qwen-7b">Qwen2.5-7B (SiliconFlow)</option>
+            <option value="qwen-coder-7b">Qwen2.5-Coder-7B (SiliconFlow)</option>
+            <option value="glm-4-9b-chat">GLM-4-9B-Chat (SiliconFlow)</option>
+          </optgroup>
+          <optgroup label="智谱AI免费模型">
+            <option value="glm-4-flash">GLM-4-Flash (ZhipuAI)</option>
+            <option value="glm-4-flash-250414">GLM-4-Flash-250414 (ZhipuAI)</option>
+          </optgroup>
+          <optgroup label="自定义">
+            <option value="custom">自定义模型</option>
+          </optgroup>
         </select>
       </div>
       
-      <div id="customModelConfig" class="hidden" style="display: none;">
+      <div id="customModelConfig" class="model-config hidden">
         <input type="text" id="customModelName" placeholder="Model Name">
         <input type="text" id="customModelEndpoint" placeholder="API Endpoint">
       </div>
       
-      <div class="api-key" style="display: none;">
-        <label for="apiKey">API Key:</label>
-        <div class="key-input-container">
-          <input type="password" id="apiKey" placeholder="Enter API Key">
-          <button id="showKeyBtn">Show</button>
+      <div class="api-key-section">
+        <div class="api-key silicon-flow">
+          <label for="siliconFlowApiKey">SiliconFlow API Key:</label>
+          <div class="key-input-container">
+            <input type="password" id="siliconFlowApiKey" placeholder="Enter API Key">
+            <button id="showSiliconFlowKeyBtn" class="show-key-btn">Show</button>
+          </div>
+        </div>
+        
+        <div class="api-key zhipu">
+          <label for="zhipuApiKey">ZhipuAI API Key:</label>
+          <div class="key-input-container">
+            <input type="password" id="zhipuApiKey" placeholder="Enter API Key">
+            <button id="showZhipuKeyBtn" class="show-key-btn">Show</button>
+          </div>
+        </div>
+        
+        <div class="api-key custom hidden">
+          <label for="customApiKey">Custom API Key:</label>
+          <div class="key-input-container">
+            <input type="password" id="customApiKey" placeholder="Enter API Key">
+            <button id="showCustomKeyBtn" class="show-key-btn">Show</button>
+          </div>
         </div>
       </div>
       
-      <button id="saveSettingsBtn" style="display: none;">Save Settings</button>
+      <button id="saveSettingsBtn">Save Settings</button>
     </div>
   <script src="popup.js" type="module"></script>
 </body>

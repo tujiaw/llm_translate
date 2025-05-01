@@ -45,8 +45,12 @@ document.addEventListener('DOMContentLoaded', async function() {
         customModelConfig: document.getElementById('customModelConfig'),
         customModelName: document.getElementById('customModelName'),
         customModelEndpoint: document.getElementById('customModelEndpoint'),
-        apiKey: document.getElementById('apiKey'),
-        showKeyBtn: document.getElementById('showKeyBtn'),
+        siliconFlowApiKey: document.getElementById('siliconFlowApiKey'),
+        zhipuApiKey: document.getElementById('zhipuApiKey'),
+        customApiKey: document.getElementById('customApiKey'),
+        showSiliconFlowKeyBtn: document.getElementById('showSiliconFlowKeyBtn'),
+        showZhipuKeyBtn: document.getElementById('showZhipuKeyBtn'),
+        showCustomKeyBtn: document.getElementById('showCustomKeyBtn'),
         saveSettingsBtn: document.getElementById('saveSettingsBtn'),
         loadingSpinner: document.getElementById('loadingSpinner')
       };
@@ -60,12 +64,33 @@ document.addEventListener('DOMContentLoaded', async function() {
       try {
         console.log('Loading settings...');
         const config = await ConfigService.load();
-        console.log('Settings loaded:', { ...config, apiKey: '******' });
+        console.log('Settings loaded:', JSON.stringify({
+          ...config,
+          apiKeys: {
+            'silicon-flow': '******',
+            'zhipu': '******',
+          }
+        }));
         
-        elements.modelSelect.value = config.model;
-        elements.customModelName.value = config.customModelName;
-        elements.customModelEndpoint.value = config.customModelEndpoint;
-        elements.apiKey.value = config.apiKey;
+        // 设置当前选择的模型
+        elements.modelSelect.value = config.currentModel;
+        
+        // 设置API密钥
+        elements.siliconFlowApiKey.value = config.apiKeys['silicon-flow'] || '';
+        elements.zhipuApiKey.value = config.apiKeys['zhipu'] || '';
+        elements.customApiKey.value = config.customModel.apiKey || '';
+        
+        // 显示/隐藏自定义模型配置
+        if (config.currentModel === 'custom') {
+          elements.customModelConfig.classList.remove('hidden');
+          elements.customModelName.value = config.customModel.name || '';
+          elements.customModelEndpoint.value = config.customModel.apiEndpoint || '';
+        } else {
+          elements.customModelConfig.classList.add('hidden');
+        }
+        
+        // 根据当前选择的模型类型更新UI
+        updateUiForSelectedModel(elements, config.currentModel);
       } catch (error) {
         console.error('Error loading settings:', error);
         UiService.showNotification('Error loading settings: ' + error.message, 'error');
@@ -80,8 +105,10 @@ document.addEventListener('DOMContentLoaded', async function() {
       // Translate button click event
       elements.translateBtn.addEventListener('click', () => translateText(elements));
       
-      // Show/hide API key button click event
-      elements.showKeyBtn.addEventListener('click', () => toggleApiKeyVisibility(elements));
+      // Show/hide API key buttons
+      elements.showSiliconFlowKeyBtn.addEventListener('click', () => toggleApiKeyVisibility(elements.siliconFlowApiKey, elements.showSiliconFlowKeyBtn));
+      elements.showZhipuKeyBtn.addEventListener('click', () => toggleApiKeyVisibility(elements.zhipuApiKey, elements.showZhipuKeyBtn));
+      elements.showCustomKeyBtn.addEventListener('click', () => toggleApiKeyVisibility(elements.customApiKey, elements.showCustomKeyBtn));
       
       // Save settings button click event
       elements.saveSettingsBtn.addEventListener('click', () => saveSettings(elements));
@@ -91,8 +118,51 @@ document.addEventListener('DOMContentLoaded', async function() {
         elements.translateBtn.disabled = !elements.inputText.value.trim();
       });
 
-      // Model select change event, auto save settings
-      elements.modelSelect.addEventListener('change', () => saveSettings(elements));
+      // Model select change event
+      elements.modelSelect.addEventListener('change', () => {
+        const selectedModel = elements.modelSelect.value;
+        updateUiForSelectedModel(elements, selectedModel);
+      });
+    }
+    
+    /**
+     * 根据选择的模型更新UI
+     * @param {object} elements - DOM元素对象
+     * @param {string} selectedModel - 选择的模型ID
+     */
+    function updateUiForSelectedModel(elements, selectedModel) {
+      // 获取模型提供商类型
+      let modelType;
+      
+      if (selectedModel === 'custom') {
+        // 处理自定义模型
+        elements.customModelConfig.classList.remove('hidden');
+        modelType = 'custom';
+      } else {
+        // 隐藏自定义模型配置
+        elements.customModelConfig.classList.add('hidden');
+        
+        // 根据选择的模型获取模型类型
+        if (selectedModel.startsWith('glm-4-flash')) {
+          modelType = 'zhipu';
+        } else if (selectedModel.startsWith('glm-4') || selectedModel.startsWith('qwen')) {
+          modelType = 'silicon-flow';
+        }
+      }
+      
+      // 显示/隐藏对应的API密钥输入框
+      const apiKeySections = document.querySelectorAll('.api-key');
+      apiKeySections.forEach(section => {
+        section.classList.add('hidden');
+      });
+      
+      // 显示对应类型的API密钥输入框
+      if (modelType) {
+        const targetSection = document.querySelector(`.api-key.${modelType}`);
+        if (targetSection) {
+          targetSection.classList.remove('hidden');
+        }
+      }
     }
     
     /**
@@ -137,53 +207,33 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Load configuration
         const config = await ConfigService.load();
         
-        // Validate API key
-        if (!config.apiKey) {
-          console.log('Error: API key not set');
-          elements.outputText.value = 'Error: Please configure API key in settings';
+        // 获取当前模型信息
+        const modelInfo = config.currentModel === 'custom' && config.customModel.enabled
+          ? config.customModel
+          : config.modelDefinitions[config.currentModel];
+          
+        // 检查API密钥
+        const modelType = modelInfo.type;
+        const apiKey = modelType === 'custom' 
+          ? config.customModel.apiKey 
+          : config.apiKeys[modelType];
+          
+        if (!apiKey) {
+          console.log(`错误: ${modelType} 的API密钥未设置`);
+          elements.outputText.value = `错误: 请在设置中配置 ${modelType} 的API密钥`;
           return;
         }
         
-        // Send API request and get translation result
-        const isChineseQuery = Utils.isChineseText(text);
-        console.log('Is Chinese query:', isChineseQuery);
-        
         try {
-          // Create request configuration
-          const { apiEndpoint, requestBody } = ApiService.createRequestConfig(
-            config,
-            text,
-            isChineseQuery
-          );
+          // 检测语言
+          const isChineseQuery = Utils.isChineseText(text);
+          console.log('Is Chinese query:', isChineseQuery);
           
-          console.log('Using API endpoint:', apiEndpoint);
-          
-          // Validate API endpoint
-          if (!ApiService.validateApiEndpoint(apiEndpoint)) {
-            throw new Error(`Invalid API endpoint: "${apiEndpoint}"`);
-          }
-          
-          // Send API request
-          const response = await fetch(apiEndpoint, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': `Bearer ${config.apiKey}`
-            },
-            body: JSON.stringify(requestBody)
-          });
-          
-          if (!response.ok) {
-            throw new Error(`API request failed: ${response.status}`);
-          }
-          
-          const data = await response.json();
-          
-          // Parse response
-          const translatedText = ApiService.parseApiResponse(data, config.model);
+          // 调用翻译API
+          const translatedText = await ApiService.translate(text, config);
           elements.outputText.value = translatedText;
         } catch (error) {
-          console.error('Error during translation:', error);
+          console.error('Translation error:', error);
           elements.outputText.value = `Translation error: ${error.message}`;
         }
       } catch (error) {
@@ -198,15 +248,16 @@ document.addEventListener('DOMContentLoaded', async function() {
     
     /**
      * Toggle API key visibility
-     * @param {object} elements - DOM elements object
+     * @param {HTMLElement} inputElement - API密钥输入元素
+     * @param {HTMLElement} buttonElement - 显示/隐藏按钮元素
      */
-    function toggleApiKeyVisibility(elements) {
-      if (elements.apiKey.type === 'password') {
-        elements.apiKey.type = 'text';
-        elements.showKeyBtn.textContent = 'Hide';
+    function toggleApiKeyVisibility(inputElement, buttonElement) {
+      if (inputElement.type === 'password') {
+        inputElement.type = 'text';
+        buttonElement.textContent = 'Hide';
       } else {
-        elements.apiKey.type = 'password';
-        elements.showKeyBtn.textContent = 'Show';
+        inputElement.type = 'password';
+        buttonElement.textContent = 'Show';
       }
     }
     
@@ -216,26 +267,42 @@ document.addEventListener('DOMContentLoaded', async function() {
      */
     async function saveSettings(elements) {
       try {
-        const model = elements.modelSelect.value;
-        const customModelName = elements.customModelName.value;
-        const customModelEndpoint = elements.customModelEndpoint.value;
-        const apiKey = elements.apiKey.value;
+        const currentModel = elements.modelSelect.value;
+        const isCustomModel = currentModel === 'custom';
         
-        console.log('Saving settings:', {
-          model: model,
-          customModelName: customModelName,
-          customModelEndpoint: customModelEndpoint,
-          apiKey: '******' // Hide actual key
-        });
+        // 加载当前配置
+        const currentConfig = await ConfigService.load();
         
-        await ConfigService.save({
-          model: model,
-          customModelName: customModelName,
-          customModelEndpoint: customModelEndpoint,
-          apiKey: apiKey,
-          // Keep default API endpoint unchanged
-          defaultApiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
-        });
+        // 创建新配置
+        const newConfig = {
+          ...currentConfig,
+          currentModel: currentModel,
+          apiKeys: {
+            'silicon-flow': elements.siliconFlowApiKey.value,
+            'zhipu': elements.zhipuApiKey.value
+          },
+          customModel: {
+            enabled: isCustomModel,
+            name: elements.customModelName.value,
+            apiEndpoint: elements.customModelEndpoint.value,
+            apiKey: elements.customApiKey.value,
+            type: 'custom'
+          }
+        };
+        
+        console.log('Saving settings:', JSON.stringify({
+          ...newConfig,
+          apiKeys: {
+            'silicon-flow': '******',
+            'zhipu': '******'
+          },
+          customModel: {
+            ...newConfig.customModel,
+            apiKey: '******'
+          }
+        }));
+        
+        await ConfigService.save(newConfig);
         
         // Show save success notification
         const saveStatus = document.createElement('div');
@@ -250,17 +317,12 @@ document.addEventListener('DOMContentLoaded', async function() {
           saveStatus.remove();
         }, 2000);
         
-        console.log('Settings saved successfully');
       } catch (error) {
         console.error('Error saving settings:', error);
         UiService.showNotification('Error saving settings: ' + error.message, 'error');
       }
     }
   } catch (error) {
-    console.error('Error loading modules:', error);
-    document.body.innerHTML = `<div style="color: red; padding: 20px;">
-      Error loading modules: ${error.message}
-      <p>Please try reloading the extension or contact the developer</p>
-    </div>`;
+    console.error('Error initializing popup:', error);
   }
 }); 

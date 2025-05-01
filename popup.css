@@ -7,7 +7,7 @@ body {
 }
 
 .container {
-  width: 360px;
+  width: 380px;
   padding: 6px;
 }
 
@@ -86,19 +86,20 @@ textarea {
 
 .settings-section {
   background-color: #f0f0f0;
-  padding: 5px;
+  padding: 8px;
   border-radius: 6px;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
 }
 
 .model-selection {
-  margin-bottom: 5px;
+  margin-bottom: 8px;
 }
 
 label {
   display: block;
   margin-bottom: 5px;
   font-weight: 500;
+  font-size: 12px;
 }
 
 select, input[type="text"], input[type="password"] {
@@ -110,6 +111,11 @@ select, input[type="text"], input[type="password"] {
   font-size: 13px;
 }
 
+optgroup {
+  font-weight: bold;
+  color: #2c3e50;
+}
+
 .key-input-container {
   display: flex;
   gap: 5px;
@@ -119,7 +125,7 @@ select, input[type="text"], input[type="password"] {
   flex-grow: 1;
 }
 
-#showKeyBtn {
+.show-key-btn {
   background-color: #f0f0f0;
   border: 1px solid #ddd;
   border-radius: 4px;
@@ -146,14 +152,35 @@ select, input[type="text"], input[type="password"] {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 #customModelConfig {
   margin-top: 8px;
   margin-bottom: 12px;
   display: flex;
+  flex-direction: column;
   gap: 8px;
+}
+
+.model-config input {
+  margin-bottom: 4px;
+}
+
+.api-key-section {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.api-key {
+  margin-bottom: 8px;
+  transition: all 0.3s ease;
+}
+
+.api-key.hidden {
+  display: none !important;
 }
 
 .help-section {

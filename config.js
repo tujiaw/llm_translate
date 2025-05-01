@@ -4,11 +4,58 @@
  * 默认配置值
  */
 const DEFAULT_CONFIG = {
-  model: 'THUDM/GLM-4-9B-0414',
-  customModelName: '',
-  customModelEndpoint: '',
-  apiKey: 'sk-yhszqcrexlxohbqlqjnxngoqenrtftzxvuvhdqzdjydtpoic',
-  defaultApiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
+  // 当前选择的模型
+  currentModel: 'glm-4-9b',
+  
+  // 模型定义列表
+  modelDefinitions: {
+    // 免费模型
+    'glm-4-9b': {
+      name: 'THUDM/GLM-4-9B-0414',
+      type: 'silicon-flow',
+      apiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
+    },
+    'qwen-7b': {
+      name: 'Qwen/Qwen2.5-7B-Instruct',
+      type: 'silicon-flow',
+      apiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
+    },
+    'qwen-coder-7b': {
+      name: 'Qwen/Qwen2.5-Coder-7B-Instruct',
+      type: 'silicon-flow',
+      apiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
+    },
+    'glm-4-9b-chat': {
+      name: 'THUDM/glm-4-9b-chat',
+      type: 'silicon-flow',
+      apiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
+    },
+    // 新增中科院大模型
+    'glm-4-flash': {
+      name: 'GLM-4-Flash',
+      type: 'zhipu',
+      apiEndpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+    },
+    'glm-4-flash-250414': {
+      name: 'GLM-4-Flash-250414',
+      type: 'zhipu',
+      apiEndpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
+    }
+  },
+  
+  // API密钥设置
+  apiKeys: {
+    'silicon-flow': 'sk-yhszqcrexlxohbqlqjnxngoqenrtftzxvuvhdqzdjydtpoic',
+    'zhipu': 'd13e5f0fafc344b8a2b463f16901ea04.2FsOJo6jFya1X8ia'
+  },
+  
+  // 自定义模型设置
+  customModel: {
+    enabled: false,
+    name: '',
+    apiEndpoint: '',
+    type: 'custom'
+  }
 };
 
 /**
@@ -45,7 +92,7 @@ class ConfigService {
    * @returns {object} 默认配置对象的副本
    */
   static getDefaults() {
-    return { ...DEFAULT_CONFIG };
+    return JSON.parse(JSON.stringify(DEFAULT_CONFIG));
   }
 
   /**
@@ -55,6 +102,29 @@ class ConfigService {
   static async reset() {
     await this.save(DEFAULT_CONFIG);
     return DEFAULT_CONFIG;
+  }
+
+  /**
+   * 获取当前选择的模型信息
+   * @param {object} config - 配置对象
+   * @returns {object} 当前选择的模型信息
+   */
+  static getCurrentModelInfo(config) {
+    if (config.customModel && config.customModel.enabled) {
+      return config.customModel;
+    }
+    
+    return config.modelDefinitions[config.currentModel];
+  }
+
+  /**
+   * 获取模型对应的API密钥
+   * @param {object} config - 配置对象
+   * @param {string} modelType - 模型类型
+   * @returns {string} API密钥
+   */
+  static getApiKeyForModel(config, modelType) {
+    return config.apiKeys[modelType] || '';
   }
 }
 
