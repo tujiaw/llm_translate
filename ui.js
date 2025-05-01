@@ -25,19 +25,50 @@ class UiService {
     
     const button = document.createElement('div');
     button.className = 'llm-translate-button';
-    button.innerText = 'Go';
     
-    // 只设置动态位置
-    button.style.left = `${x}px`;
-    button.style.top = `${y + 20}px`;
+    // 使用图标替代文本
+    const img = document.createElement('img');
+    img.src = chrome.runtime.getURL('images/icon16.png');
+    img.alt = '翻译';
+    img.style.width = '16px';
+    img.style.height = '16px';
+    button.appendChild(img);
     
-    // 确保按钮在屏幕内
+    // 估计按钮尺寸
+    const buttonRect = {width: 60, height: 30}; 
+    
+    // 获取窗口尺寸
     const windowWidth = window.innerWidth || document.documentElement.clientWidth;
-    const buttonRect = {width: 60, height: 30}; // 估计的按钮尺寸
+    const windowHeight = window.innerHeight || document.documentElement.clientHeight;
     
-    if (x + buttonRect.width > windowWidth) {
-      button.style.left = `${windowWidth - buttonRect.width - 5}px`;
+    // 初始位置计算
+    let posX = x;
+    let posY = y + 20; // 默认在选中文本下方20px
+    
+    // 确保按钮在屏幕内 - 水平方向
+    if (posX + buttonRect.width > windowWidth) {
+      posX = windowWidth - buttonRect.width - 5;
     }
+    
+    // 确保按钮不会太靠左
+    if (posX < 5) {
+      posX = 5;
+    }
+    
+    // 确保按钮在屏幕内 - 垂直方向
+    if (posY + buttonRect.height > windowHeight) {
+      // 如果下方放不下，尝试放在上方
+      posY = y - buttonRect.height - 5;
+      
+      // 如果上方也放不下，就放在靠近底部但仍在屏幕内的位置
+      if (posY < 5) {
+        posY = windowHeight - buttonRect.height - 5;
+      }
+    }
+    
+    // 设置最终位置
+    button.style.left = `${posX}px`;
+    button.style.top = `${posY}px`;
     
     // 将要翻译的文本保存在按钮的数据属性中
     button.dataset.textToTranslate = textToTranslate;
@@ -53,9 +84,9 @@ class UiService {
         document.body.removeChild(button);
       }
       
-      // 调用传入的回调函数
+      // 调用传入的回调函数 - 使用计算后的位置
       if (typeof onTranslate === 'function') {
-        onTranslate(text, x, y);
+        onTranslate(text, posX, posY);
       }
     };
     
@@ -78,8 +109,6 @@ class UiService {
     
     // 弹窗样式
     popup.style.position = 'absolute';
-    popup.style.left = `${x}px`;
-    popup.style.top = `${y + 20}px`;
     popup.style.zIndex = '10000';
     popup.style.backgroundColor = 'white';
     popup.style.padding = '15px';
@@ -88,10 +117,42 @@ class UiService {
     popup.style.minWidth = '200px';
     popup.style.maxWidth = '400px';
     
-    // 在弹窗上直接阻止事件冒泡
-    // popup.addEventListener('mousedown', (e) => {
-    //   e.stopPropagation();
-    // });
+    // 获取窗口尺寸
+    const windowWidth = window.innerWidth || document.documentElement.clientWidth;
+    const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+    
+    // 估计弹窗尺寸 (需要考虑内容可能很长)
+    const popupWidth = 400; // maxWidth
+    const popupHeight = 200; // 估计高度
+    
+    // 初始位置计算
+    let posX = x;
+    let posY = y + 20; // 默认在选中文本下方20px
+    
+    // 确保弹窗在屏幕内 - 水平方向
+    if (posX + popupWidth > windowWidth) {
+      posX = windowWidth - popupWidth - 10;
+    }
+    
+    // 确保弹窗不会太靠左
+    if (posX < 10) {
+      posX = 10;
+    }
+    
+    // 确保弹窗在屏幕内 - 垂直方向
+    if (posY + popupHeight > windowHeight) {
+      // 如果下方放不下，尝试放在上方
+      posY = y - popupHeight - 10;
+      
+      // 如果上方也放不下，就放在屏幕中央
+      if (posY < 10) {
+        posY = Math.max(10, (windowHeight - popupHeight) / 2);
+      }
+    }
+    
+    // 设置最终位置
+    popup.style.left = `${posX}px`;
+    popup.style.top = `${posY}px`;
     
     // 加载指示器
     const loader = document.createElement('div');

@@ -1,23 +1,24 @@
 .llm-translate-button {
   position: absolute;
   z-index: 10000;
-  background-color: #4CAF50;
-  color: white;
-  width: 30px;
-  height: 30px;
+  background-color: rgba(255, 255, 255, 0.8);
+  width: 24px;
+  height: 24px;
   border-radius: 50%;
   cursor: pointer;
-  font-size: 14px;
-  box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   font-family: Arial, sans-serif;
-  transition: background-color 0.2s;
+  transition: transform 0.2s;
   display: flex;
   align-items: center;
   justify-content: center;
+  border: 1px solid rgba(0, 0, 0, 0.1);
 }
 
 .llm-translate-button:hover {
-  background-color: #45a049;
+  background-color: rgba(255, 255, 255, 0.95);
+  transform: scale(1.1);
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.15);
 }
 
 .llm-translation-popup {
