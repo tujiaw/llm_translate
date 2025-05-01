@@ -2,19 +2,15 @@
 // Use dynamic imports to get modules
 document.addEventListener('DOMContentLoaded', async function() {
   try {
-    const [configModule, translatorModule, uiModule, messagingModule, utilsModule, apiModule] = await Promise.all([
+    const [configModule, uiModule, utilsModule, apiModule] = await Promise.all([
       import(chrome.runtime.getURL('config.js')),
-      import(chrome.runtime.getURL('translator.js')),
       import(chrome.runtime.getURL('ui.js')),
-      import(chrome.runtime.getURL('messaging.js')),
       import(chrome.runtime.getURL('utils.js')),
       import(chrome.runtime.getURL('api.js'))
     ]);
     
     const ConfigService = configModule.default;
-    const TranslatorService = translatorModule.default;
     const UiService = uiModule.default;
-    const MessagingService = messagingModule.default;
     const Utils = utilsModule.default;
     const ApiService = apiModule.default;
     
