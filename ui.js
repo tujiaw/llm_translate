@@ -15,8 +15,8 @@ class UiService {
    * 计算元素在屏幕上的最佳位置
    * @param {number} x - 初始X坐标
    * @param {number} y - 初始Y坐标
-   * @param {number} width - 元素宽度
-   * @param {number} height - 元素高度
+   * @param {number} width - 元素最大宽度
+   * @param {number} height - 元素最大高度
    * @param {number} offset - 垂直偏移量
    * @returns {Object} 计算后的位置 {x, y}
    */
@@ -25,29 +25,68 @@ class UiService {
     const windowWidth = window.innerWidth || document.documentElement.clientWidth;
     const windowHeight = window.innerHeight || document.documentElement.clientHeight;
     
-    // 初始位置计算
+    // 对宽高进行合理估算
+    // 如果宽度超过窗口宽度的75%，则限制为窗口宽度的75%
+    const estimatedWidth = Math.min(width, windowWidth * 0.75);
+    // 如果高度超过窗口高度的75%，则限制为窗口高度的75%
+    const estimatedHeight = Math.min(height, windowHeight * 0.75);
+    
+    // 初始位置计算 - 优先在点击/选择位置的右下方
     let posX = x;
     let posY = y + offset; // 默认在选中文本下方offset像素
     
-    // 确保元素在屏幕内 - 水平方向
-    if (posX + width > windowWidth) {
-      posX = windowWidth - width - 5;
+    // 考虑四个可能的放置位置: 右下、左下、右上、左上
+    // 计算每个位置的可用空间
+    const spaceRight = windowWidth - x;
+    const spaceLeft = x;
+    const spaceBelow = windowHeight - y;
+    const spaceAbove = y;
+    
+    // 根据可用空间决定水平位置
+    if (spaceRight >= estimatedWidth) {
+      // 右侧有足够空间
+      posX = x;
+    } else if (spaceLeft >= estimatedWidth) {
+      // 左侧有足够空间
+      posX = x - estimatedWidth;
+    } else {
+      // 两侧都没有足够空间，居中显示，但确保不超出屏幕
+      posX = Math.max(5, Math.min(windowWidth - estimatedWidth - 5, 
+                    (windowWidth - estimatedWidth) / 2));
     }
     
-    // 确保元素不会太靠左
+    // 根据可用空间决定垂直位置
+    if (spaceBelow >= estimatedHeight) {
+      // 下方有足够空间
+      posY = y + offset;
+    } else if (spaceAbove >= estimatedHeight) {
+      // 上方有足够空间
+      posY = y - estimatedHeight - offset;
+    } else {
+      // 上下都没有足够空间，居中显示，但确保不超出屏幕
+      posY = Math.max(5, Math.min(windowHeight - estimatedHeight - 5, 
+                    (windowHeight - estimatedHeight) / 2));
+    }
+    
+    // 最后的边界检查
+    // 确保不会超出右边界
+    if (posX + estimatedWidth > windowWidth) {
+      posX = windowWidth - estimatedWidth - 5;
+    }
+    
+    // 确保不会超出左边界
     if (posX < 5) {
       posX = 5;
     }
     
-    // 确保元素在屏幕内 - 垂直方向
-    if (posY + height > windowHeight) {
-      // 如果下方放不下，尝试放在上方
-      posY = y - height - 5;
-      
-      // 如果上方也放不下，就放在靠近底部但仍在屏幕内的位置
-      if (posY < 5) {
-        posY = windowHeight - height - 5;
-      }
+    // 确保不会超出下边界
+    if (posY + estimatedHeight > windowHeight) {
+      posY = windowHeight - estimatedHeight - 5;
+    }
+    
+    // 确保不会超出上边界
+    if (posY < 5) {
+      posY = 5;
     }
     
     return { x: posX, y: posY };
@@ -76,11 +115,12 @@ class UiService {
     img.style.height = '16px';
     button.appendChild(img);
     
-    // 估计按钮尺寸
-    const buttonRect = {width: 60, height: 30}; 
+    // 按钮实际尺寸 (根据内容调整)
+    const buttonWidth = 32; // 图标宽度 + padding
+    const buttonHeight = 32; // 图标高度 + padding
     
-    // 计算最佳位置
-    const position = UiService.calculatePosition(x, y, buttonRect.width, buttonRect.height);
+    // 计算最佳位置 - 使用按钮的实际尺寸
+    const position = UiService.calculatePosition(x, y, buttonWidth, buttonHeight);
     
     // 设置位置
     button.style.left = `${position.x}px`;
@@ -91,7 +131,6 @@ class UiService {
     
     // 点击事件
     button.onclick = function(e) {
-      console.log("4")
       e.stopPropagation();
       const text = this.dataset.textToTranslate;
       
@@ -107,8 +146,6 @@ class UiService {
     };
     
     document.body.appendChild(button);
-    
-    // 点击页面其他位置移除按钮
     
     return button;
   }
@@ -128,22 +165,10 @@ class UiService {
     popup.style.zIndex = '10000';
     popup.style.backgroundColor = 'white';
     popup.style.padding = '15px'; 
-
     popup.style.borderRadius = '8px';
     popup.style.boxShadow = '0 4px 15px rgba(0,0,0,0.2)';
     popup.style.minWidth = '200px';
     popup.style.maxWidth = '400px';
-    
-    // 估计弹窗尺寸 (需要考虑内容可能很长)
-    const popupWidth = 400; // maxWidth
-    const popupHeight = 200; // 估计高度
-    
-    // 计算最佳位置
-    const position = UiService.calculatePosition(x, y, popupWidth, popupHeight);
-    
-    // 设置位置
-    popup.style.left = `${position.x}px`;
-    popup.style.top = `${position.y}px`;
     
     // 加载指示器
     const loader = document.createElement('div');
@@ -164,8 +189,19 @@ class UiService {
     document.head.appendChild(style);
     
     popup.appendChild(loader);
-    
     document.body.appendChild(popup);
+    
+    // 近似估计弹窗内容的初始尺寸
+    const initialWidth = 250;  // 预计的宽度
+    const initialHeight = 100; // 预计的高度
+    
+    // 计算最佳位置，使用估计的尺寸
+    const position = UiService.calculatePosition(x, y, initialWidth, initialHeight);
+    
+    // 设置位置
+    popup.style.left = `${position.x}px`;
+    popup.style.top = `${position.y}px`;
+    
     return popup;
   }
 
@@ -214,6 +250,10 @@ class UiService {
       return null;
     }
     
+    // 存储当前位置
+    const currentLeft = parseInt(popup.style.left);
+    const currentTop = parseInt(popup.style.top);
+    
     // 清空原有内容
     popup.innerHTML = '';
     
@@ -254,6 +294,24 @@ class UiService {
       console.error('Failed to copy translation to clipboard:', error);
     }
     
+    // 为新内容重新计算位置
+    // 等待DOM更新完成后获取实际尺寸
+    setTimeout(() => {
+      const rect = popup.getBoundingClientRect();
+      const estimatedWidth = rect.width;
+      const estimatedHeight = rect.height;
+      
+      // 使用原位置坐标重新计算最佳位置
+      const position = UiService.calculatePosition(
+        currentLeft, currentTop - 20, // 减去偏移量以获取原始触发点
+        estimatedWidth, estimatedHeight
+      );
+      
+      // 应用新位置
+      popup.style.left = `${position.x}px`;
+      popup.style.top = `${position.y}px`;
+    }, 0);
+    
     return popup;
   }
   
@@ -267,6 +325,10 @@ class UiService {
     if (!popup || !document.body.contains(popup)) {
       return null;
     }
+    
+    // 存储当前位置
+    const currentLeft = parseInt(popup.style.left);
+    const currentTop = parseInt(popup.style.top);
     
     // 清空原有内容
     popup.innerHTML = '';
@@ -300,6 +362,24 @@ class UiService {
     // 添加到弹窗
     popup.appendChild(original);
     popup.appendChild(result);
+    
+    // 为新内容重新计算位置
+    // 等待DOM更新完成后获取实际尺寸
+    setTimeout(() => {
+      const rect = popup.getBoundingClientRect();
+      const estimatedWidth = rect.width;
+      const estimatedHeight = rect.height;
+      
+      // 使用原位置坐标重新计算最佳位置
+      const position = UiService.calculatePosition(
+        currentLeft, currentTop - 20, // 减去偏移量以获取原始触发点
+        estimatedWidth, estimatedHeight
+      );
+      
+      // 应用新位置
+      popup.style.left = `${position.x}px`;
+      popup.style.top = `${position.y}px`;
+    }, 0);
     
     return popup;
   }
