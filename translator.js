@@ -26,13 +26,7 @@ class TranslatorService {
     
     // 调用API服务执行翻译
     try {
-      const translatedText = await ApiService.translate(text, {
-        apiKey: config.apiKey,
-        model: config.model,
-        customModelName: config.customModelName,
-        customModelEndpoint: config.customModelEndpoint,
-        defaultApiEndpoint: config.defaultApiEndpoint
-      });
+      const translatedText = await ApiService.translate(text, config);
       
       return translatedText;
     } catch (error) {

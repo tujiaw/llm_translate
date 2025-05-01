@@ -58,14 +58,22 @@ function initializeConfig() {
   try {
     // 获取当前配置
     ConfigService.load().then(config => {
-      console.log('已加载配置', { ...config, apiKey: '******' });
+      console.log('已加载配置', JSON.stringify({
+        currentModel: config.currentModel,
+        hasModelDefinitions: Boolean(config.modelDefinitions),
+        modelDefinitionsCount: config.modelDefinitions ? Object.keys(config.modelDefinitions).length : 0,
+        hasApiKeys: Boolean(config.apiKeys),
+        apiKeysSiliconFlow: Boolean(config.apiKeys && config.apiKeys['silicon-flow']),
+        apiKeysZhipu: Boolean(config.apiKeys && config.apiKeys['zhipu']),
+        customModelEnabled: Boolean(config.customModel && config.customModel.enabled)
+      }));
       
-      // 如果是首次安装且没有设置过，确保默认值已设置
-      if (!config.model) {
-        console.log('首次安装，设置默认配置');
+      // 检查配置完整性
+      if (!config.modelDefinitions || Object.keys(config.modelDefinitions).length === 0) {
+        console.log('配置不完整，重置为默认值');
         ConfigService.reset();
       } else {
-        console.log('已有配置，无需设置默认值');
+        console.log('已有完整配置，无需设置默认值');
       }
     });
   } catch (error) {
@@ -104,95 +112,92 @@ function performTranslation(text, tabId) {
     return;
   }
   
-  // Load configuration
+  // 加载配置
   ConfigService.load().then(config => {
+    console.log('翻译请求加载的配置:', JSON.stringify({
+      currentModel: config.currentModel,
+      hasModelDefinitions: Boolean(config.modelDefinitions),
+      modelDefinitionsCount: config.modelDefinitions ? Object.keys(config.modelDefinitions).length : 0,
+      hasApiKeys: Boolean(config.apiKeys),
+      apiKeysSiliconFlow: Boolean(config.apiKeys && config.apiKeys['silicon-flow']),
+      apiKeysZhipu: Boolean(config.apiKeys && config.apiKeys['zhipu']),
+      customModelEnabled: Boolean(config.customModel && config.customModel.enabled)
+    }));
     
-    // Validate API key
-    if (!config.apiKey) {
-      console.log('Error: API key not set');
-      // If no API key, notify user to set it
+    // 获取当前模型信息
+    let modelInfo;
+    try {
+      if (config.currentModel === 'custom' && config.customModel && config.customModel.enabled) {
+        modelInfo = config.customModel;
+      } else if (config.modelDefinitions && config.modelDefinitions[config.currentModel]) {
+        modelInfo = config.modelDefinitions[config.currentModel];
+      } else {
+        throw new Error(`未找到模型信息: ${config.currentModel || '未指定模型'}`);
+      }
+    } catch (error) {
+      console.error('获取模型信息时出错:', error);
       if (tabId) {
         chrome.tabs.sendMessage(tabId, {
           action: "translate",
           text: text,
-          result: "Please configure API key in extension settings first"
+          result: `获取模型信息出错: ${error.message}`
         });
       }
       return;
     }
     
-    // Detect language
-    const isChineseQuery = /[\u4e00-\u9fa5]/.test(text);
-    console.log('Is Chinese query:', isChineseQuery);
+    // 检查API密钥
+    const modelType = modelInfo.type;
+    let apiKey;
     
-    try {
-      // 使用ApiService创建请求配置
-      const { apiEndpoint, requestBody } = ApiService.createRequestConfig(
-        config,
-        text,
-        isChineseQuery
-      );
-      
-      console.log('API端点:', apiEndpoint);
-      
-      // 在发送API请求前添加验证
-      if (!ApiService.validateApiEndpoint(apiEndpoint)) {
-        console.error('无效的API端点，取消请求:', apiEndpoint);
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, {
-            action: "translate",
-            text: text,
-            result: `错误: 无效的API端点 "${apiEndpoint}"`
-          });
-        }
-        return;
+    if (modelType === 'custom' && config.customModel && config.customModel.apiKey) {
+      apiKey = config.customModel.apiKey;
+    } else if (config.apiKeys && config.apiKeys[modelType]) {
+      apiKey = config.apiKeys[modelType];
+    }
+    
+    // 校验API密钥
+    if (!apiKey) {
+      console.log(`错误: ${modelType} 的API密钥未设置`);
+      if (tabId) {
+        chrome.tabs.sendMessage(tabId, {
+          action: "translate",
+          text: text,
+          result: `Please configure API key in extension settings first.\n\n请先在扩展设置中配置 ${modelType} 的API密钥。`
+        });
       }
+      return;
+    }
+    
+    // 使用翻译服务
+    try {
+      console.log(`开始翻译，模型类型: ${modelType}, 模型名称: ${modelInfo.name}`);
       
-      // 发送API请求
-      fetch(apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${config.apiKey}`
-        },
-        body: JSON.stringify(requestBody)
-      })
-      .then(response => {
-        console.log('API响应状态:', response.status);
-        if (!response.ok) {
-          throw new Error(`API请求失败: ${response.status}`);
-        }
-        return response.json();
-      })
-      .then(data => {
-        console.log('API响应数据:', data);
-        
-        // 解析响应
-        const translatedText = ApiService.parseApiResponse(data, config.model);
-        console.log('解析后的翻译结果:', translatedText);
-        
-        // 将翻译结果发送回内容脚本
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, {
-            action: "translate",
-            text: text,
-            result: translatedText
-          });
-          console.log('已发送翻译结果到标签页:', tabId);
-        }
-      })
-      .catch(error => {
-        console.error('翻译出错:', error);
-        // 发送错误信息回内容脚本
-        if (tabId) {
-          chrome.tabs.sendMessage(tabId, {
-            action: "translate",
-            text: text,
-            result: `翻译出错: ${error.message}`
-          });
-          console.log('已发送错误信息到标签页:', tabId);
-        }
-      });
+      // 使用TranslatorService进行翻译
+      TranslatorService.translate(text)
+        .then(translatedText => {
+          console.log('翻译成功:', translatedText);
+          // 将翻译结果发送回内容脚本
+          if (tabId) {
+            chrome.tabs.sendMessage(tabId, {
+              action: "translate",
+              text: text,
+              result: translatedText
+            });
+            console.log('已发送翻译结果到标签页:', tabId);
+          }
+        })
+        .catch(error => {
+          console.error('翻译过程中出错:', error);
+          // 发送错误信息回内容脚本
+          if (tabId) {
+            chrome.tabs.sendMessage(tabId, {
+              action: "translate",
+              text: text,
+              result: `翻译出错: ${error.message}`
+            });
+          }
+        });
     } catch (error) {
       console.error('准备翻译请求时出错:', error);
       if (tabId) {

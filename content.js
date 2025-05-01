@@ -190,9 +190,18 @@
       console.log('Processing translation result, original:', Utils.truncateText(originalText, 50));
       console.log('Translation result:', Utils.truncateText(translatedText, 50));
       
+      // 检查是否为错误消息
+      const isErrorMessage = translatedText.includes('Please configure API key') || 
+                            translatedText.includes('Error') || 
+                            translatedText.includes('错误');
+      
       // Use UI service to update popup content
       if (translationPopup && document.body.contains(translationPopup)) {
-        UiService.updatePopupWithTranslation(translationPopup, originalText, translatedText);
+        if (isErrorMessage) {
+          UiService.showError(translationPopup, originalText, translatedText);
+        } else {
+          UiService.updatePopupWithTranslation(translationPopup, originalText, translatedText);
+        }
       } else {
         console.warn('Translation popup does not exist or has been removed, cannot update content');
       }

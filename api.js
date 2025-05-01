@@ -27,22 +27,52 @@ class ApiService {
    * @returns {object} 包含apiEndpoint和requestBody的配置对象
    */
   static createRequestConfig(config, text, isChineseQuery) {
+    console.log('创建请求配置，输入配置:', JSON.stringify({
+      currentModel: config.currentModel,
+      hasApiKeys: Boolean(config.apiKeys),
+      hasCustomModel: Boolean(config.customModel),
+      modelDefinitions: Boolean(config.modelDefinitions)
+    }));
+    
     const systemPrompt = isChineseQuery 
       ? "你是一个翻译助手，请将以下中文文本翻译成英文，保持原文的意思、格式和语气。只输出翻译结果，不要有任何解释或额外内容。" 
       : "你是一个翻译助手，请将以下英文文本翻译成中文，保持原文的意思、格式和语气。只输出翻译结果，不要有任何解释或额外内容。";
     
     // 获取当前选择的模型信息
-    const modelInfo = config.customModel && config.customModel.enabled 
-      ? config.customModel
-      : config.modelDefinitions[config.currentModel];
+    let modelInfo;
+    
+    try {
+      if (config.currentModel === 'custom' && config.customModel && config.customModel.enabled) {
+        modelInfo = config.customModel;
+        console.log('使用自定义模型:', modelInfo.name);
+      } else if (config.modelDefinitions && config.modelDefinitions[config.currentModel]) {
+        modelInfo = config.modelDefinitions[config.currentModel];
+        console.log('使用预定义模型:', modelInfo.name);
+      } else {
+        throw new Error(`无法找到模型信息: ${config.currentModel || '未指定模型'}`);
+      }
+    } catch (error) {
+      console.error('获取模型信息错误:', error);
+      throw error;
+    }
     
     if (!modelInfo) {
-      throw new Error(`未找到模型信息: ${config.currentModel}`);
+      throw new Error(`未找到模型信息: ${config.currentModel || '未指定模型'}`);
+    }
+    
+    if (!modelInfo.apiEndpoint) {
+      throw new Error(`模型 ${modelInfo.name || config.currentModel} 缺少API端点配置`);
+    }
+    
+    if (!modelInfo.type) {
+      throw new Error(`模型 ${modelInfo.name || config.currentModel} 缺少类型配置`);
     }
     
     const apiEndpoint = modelInfo.apiEndpoint;
     const modelType = modelInfo.type;
     const modelName = modelInfo.name;
+    
+    console.log(`准备请求: 类型=${modelType}, 端点=${apiEndpoint}, 模型=${modelName}`);
     
     let requestBody;
     
@@ -184,30 +214,51 @@ class ApiService {
     }
     
     // 获取对应的API密钥
-    const apiKey = modelType === 'custom' && config.customModel.apiKey
-      ? config.customModel.apiKey
-      : config.apiKeys[modelType];
+    let apiKey;
+    
+    try {
+      if (modelType === 'custom' && config.customModel && config.customModel.apiKey) {
+        apiKey = config.customModel.apiKey;
+      } else if (config.apiKeys && config.apiKeys[modelType]) {
+        apiKey = config.apiKeys[modelType];
+      }
       
-    if (!apiKey) {
-      throw new Error(`未设置 ${modelType} 的API密钥`);
+      // 调试信息
+      console.log(`模型类型: ${modelType}, API密钥存在: ${Boolean(apiKey)}`);
+      
+      if (!apiKey) {
+        throw new Error(`Please configure API key in extension settings first. (${modelType})`);
+      }
+    } catch (error) {
+      console.error('获取API密钥错误:', error);
+      throw new Error(`无法获取API密钥: ${error.message}`);
     }
     
     // 发送API请求
-    const response = await fetch(apiEndpoint, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
-      },
-      body: JSON.stringify(requestBody)
-    });
-    
-    if (!response.ok) {
-      throw new Error(`API请求失败: ${response.status}`);
+    try {
+      const response = await fetch(apiEndpoint, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
+        },
+        body: JSON.stringify(requestBody)
+      });
+      
+      if (!response.ok) {
+        const errorText = await response.text().catch(() => 'No error details');
+        throw new Error(`API请求失败: ${response.status} - ${errorText}`);
+      }
+      
+      const data = await response.json();
+      return this.parseApiResponse(data, modelType);
+    } catch (error) {
+      console.error('API请求错误:', error);
+      if (error.message.includes('Failed to fetch')) {
+        throw new Error(`无法连接到API服务器，请检查网络连接或API端点是否正确`);
+      }
+      throw error;
     }
-    
-    const data = await response.json();
-    return this.parseApiResponse(data, modelType);
   }
 }
 

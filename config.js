@@ -45,8 +45,8 @@ const DEFAULT_CONFIG = {
   
   // API密钥设置
   apiKeys: {
-    'silicon-flow': 'sk-yhszqcrexlxohbqlqjnxngoqenrtftzxvuvhdqzdjydtpoic',
-    'zhipu': 'd13e5f0fafc344b8a2b463f16901ea04.2FsOJo6jFya1X8ia'
+    'silicon-flow': '',
+    'zhipu': ''
   },
   
   // 自定义模型设置
@@ -67,10 +67,55 @@ class ConfigService {
    * @returns {Promise<object>} 配置对象
    */
   static async load() {
-    return new Promise((resolve) => {
-      chrome.storage.sync.get(DEFAULT_CONFIG, (items) => {
-        resolve(items);
-      });
+    return new Promise((resolve, reject) => {
+      try {
+        console.log('正在加载配置...');
+        chrome.storage.sync.get(DEFAULT_CONFIG, (items) => {
+          if (chrome.runtime.lastError) {
+            console.error('Chrome存储错误:', chrome.runtime.lastError);
+            reject(new Error(`加载设置失败: ${chrome.runtime.lastError.message}`));
+            return;
+          }
+          
+          // 确保各字段存在
+          const config = {
+            ...DEFAULT_CONFIG,
+            ...items,
+            // 确保modelDefinitions始终存在且包含所有默认模型
+            modelDefinitions: {
+              ...DEFAULT_CONFIG.modelDefinitions,
+              ...(items.modelDefinitions || {})
+            },
+            apiKeys: {
+              ...DEFAULT_CONFIG.apiKeys,
+              ...(items.apiKeys || {})
+            },
+            customModel: {
+              ...DEFAULT_CONFIG.customModel,
+              ...(items.customModel || {})
+            }
+          };
+          
+          // 确保有效的currentModel
+          if (!config.modelDefinitions[config.currentModel] && config.currentModel !== 'custom') {
+            config.currentModel = DEFAULT_CONFIG.currentModel;
+            console.warn(`无效的模型选择，重置为默认: ${config.currentModel}`);
+          }
+          
+          console.log('配置加载成功', JSON.stringify({
+            currentModel: config.currentModel,
+            modelDefinitionsCount: Object.keys(config.modelDefinitions).length,
+            apiKeySiliconFlow: config.apiKeys['silicon-flow'] ? '已设置' : '未设置',
+            apiKeyZhipu: config.apiKeys['zhipu'] ? '已设置' : '未设置',
+            customModelEnabled: Boolean(config.customModel.enabled)
+          }));
+          
+          resolve(config);
+        });
+      } catch (error) {
+        console.error('加载配置时发生错误:', error);
+        reject(error);
+      }
     });
   }
 
@@ -80,10 +125,42 @@ class ConfigService {
    * @returns {Promise<void>}
    */
   static async save(config) {
-    return new Promise((resolve) => {
-      chrome.storage.sync.set(config, () => {
-        resolve();
-      });
+    return new Promise((resolve, reject) => {
+      try {
+        // 确保必要的字段存在
+        const safeConfig = {
+          ...DEFAULT_CONFIG,
+          ...config,
+          modelDefinitions: {
+            ...DEFAULT_CONFIG.modelDefinitions,
+            ...(config.modelDefinitions || {})
+          },
+          apiKeys: {
+            ...DEFAULT_CONFIG.apiKeys,
+            ...(config.apiKeys || {})
+          },
+          customModel: {
+            ...DEFAULT_CONFIG.customModel,
+            ...(config.customModel || {})
+          }
+        };
+        
+        // 记录日志
+        console.log('正在保存配置...');
+        
+        chrome.storage.sync.set(safeConfig, () => {
+          if (chrome.runtime.lastError) {
+            console.error('Chrome存储错误:', chrome.runtime.lastError);
+            reject(new Error(`保存设置失败: ${chrome.runtime.lastError.message}`));
+          } else {
+            console.log('配置保存成功');
+            resolve();
+          }
+        });
+      } catch (error) {
+        console.error('保存配置时发生错误:', error);
+        reject(error);
+      }
     });
   }
 

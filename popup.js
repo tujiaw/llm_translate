@@ -65,27 +65,36 @@ document.addEventListener('DOMContentLoaded', async function() {
       try {
         console.log('Loading settings...');
         const config = await ConfigService.load();
+        
+        // 确保apiKeys对象存在
+        if (!config.apiKeys) {
+          config.apiKeys = {
+            'silicon-flow': '',
+            'zhipu': ''
+          };
+        }
+        
         console.log('Settings loaded:', JSON.stringify({
           ...config,
           apiKeys: {
-            'silicon-flow': '******',
-            'zhipu': '******',
+            'silicon-flow': config.apiKeys['silicon-flow'] ? '******' : '',
+            'zhipu': config.apiKeys['zhipu'] ? '******' : '',
           }
         }));
         
         // 设置当前选择的模型
-        elements.modelSelect.value = config.currentModel;
+        elements.modelSelect.value = config.currentModel || 'glm-4-9b';
         
         // 设置API密钥
         elements.siliconFlowApiKey.value = config.apiKeys['silicon-flow'] || '';
         elements.zhipuApiKey.value = config.apiKeys['zhipu'] || '';
-        elements.customApiKey.value = config.customModel.apiKey || '';
+        elements.customApiKey.value = config.customModel && config.customModel.apiKey ? config.customModel.apiKey : '';
         
         // 显示/隐藏自定义模型配置
         if (config.currentModel === 'custom') {
           elements.customModelConfig.classList.remove('hidden');
-          elements.customModelName.value = config.customModel.name || '';
-          elements.customModelEndpoint.value = config.customModel.apiEndpoint || '';
+          elements.customModelName.value = config.customModel && config.customModel.name ? config.customModel.name : '';
+          elements.customModelEndpoint.value = config.customModel && config.customModel.apiEndpoint ? config.customModel.apiEndpoint : '';
         } else {
           elements.customModelConfig.classList.add('hidden');
         }
@@ -217,20 +226,46 @@ document.addEventListener('DOMContentLoaded', async function() {
         // Load configuration
         const config = await ConfigService.load();
         
+        console.log('翻译时加载的配置:', JSON.stringify({
+          currentModel: config.currentModel,
+          hasModelDefinitions: Boolean(config.modelDefinitions),
+          hasApiKeys: Boolean(config.apiKeys),
+          apiKeysSiliconFlow: Boolean(config.apiKeys && config.apiKeys['silicon-flow']),
+          apiKeysZhipu: Boolean(config.apiKeys && config.apiKeys['zhipu']),
+          customModelEnabled: Boolean(config.customModel && config.customModel.enabled)
+        }));
+        
+        // 检查配置是否完整
+        if (!config.modelDefinitions) {
+          console.error('配置中缺少modelDefinitions');
+          elements.outputText.value = '配置错误: 模型定义缺失，请重新设置或重启扩展';
+          return;
+        }
+        
         // 获取当前模型信息
-        const modelInfo = config.currentModel === 'custom' && config.customModel.enabled
+        const modelInfo = config.currentModel === 'custom' && config.customModel && config.customModel.enabled
           ? config.customModel
           : config.modelDefinitions[config.currentModel];
           
+        if (!modelInfo) {
+          console.error(`未找到模型信息: ${config.currentModel}`);
+          elements.outputText.value = `Error: Model information not found for ${config.currentModel}`;
+          return;
+        }
+          
         // 检查API密钥
         const modelType = modelInfo.type;
-        const apiKey = modelType === 'custom' 
-          ? config.customModel.apiKey 
-          : config.apiKeys[modelType];
+        let apiKey;
+        
+        if (modelType === 'custom' && config.customModel && config.customModel.apiKey) {
+          apiKey = config.customModel.apiKey;
+        } else if (config.apiKeys && config.apiKeys[modelType]) {
+          apiKey = config.apiKeys[modelType];
+        }
           
         if (!apiKey) {
           console.log(`错误: ${modelType} 的API密钥未设置`);
-          elements.outputText.value = `错误: 请在设置中配置 ${modelType} 的API密钥`;
+          elements.outputText.value = `Please configure API key in extension settings first.\n\n请先在扩展设置中配置 ${modelType} 的API密钥。`;
           return;
         }
         
@@ -284,6 +319,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         const currentModel = elements.modelSelect.value;
         const isCustomModel = currentModel === 'custom';
         
+        // 获取API密钥值
+        const siliconFlowKey = elements.siliconFlowApiKey.value.trim();
+        const zhipuKey = elements.zhipuApiKey.value.trim();
+        const customKey = elements.customApiKey.value.trim();
+        
         // 加载当前配置
         const currentConfig = await ConfigService.load();
         
@@ -292,48 +332,85 @@ document.addEventListener('DOMContentLoaded', async function() {
           ...currentConfig,
           currentModel: currentModel,
           apiKeys: {
-            'silicon-flow': elements.siliconFlowApiKey.value,
-            'zhipu': elements.zhipuApiKey.value
+            'silicon-flow': siliconFlowKey,
+            'zhipu': zhipuKey
           },
           customModel: {
             enabled: isCustomModel,
-            name: elements.customModelName.value,
-            apiEndpoint: elements.customModelEndpoint.value,
-            apiKey: elements.customApiKey.value,
+            name: elements.customModelName.value.trim(),
+            apiEndpoint: elements.customModelEndpoint.value.trim(),
+            apiKey: customKey,
             type: 'custom'
           }
         };
         
-        console.log('Saving settings:', JSON.stringify({
-          ...newConfig,
+        // 调试信息
+        console.log('保存前配置:', JSON.stringify({
+          currentModel: currentConfig.currentModel,
           apiKeys: {
-            'silicon-flow': '******',
-            'zhipu': '******'
-          },
-          customModel: {
-            ...newConfig.customModel,
-            apiKey: '******'
+            'silicon-flow': currentConfig.apiKeys['silicon-flow'] ? '******' : '未设置',
+            'zhipu': currentConfig.apiKeys['zhipu'] ? '******' : '未设置'
           }
         }));
         
+        console.log('保存后配置:', JSON.stringify({
+          currentModel: newConfig.currentModel,
+          apiKeys: {
+            'silicon-flow': newConfig.apiKeys['silicon-flow'] ? '******' : '未设置',
+            'zhipu': newConfig.apiKeys['zhipu'] ? '******' : '未设置'
+          }
+        }));
+        
+        // 保存配置
         await ConfigService.save(newConfig);
+        
+        // 验证保存是否成功
+        const verifyConfig = await ConfigService.load();
+        const modelType = currentModel === 'custom' ? 'custom' : 
+                          (currentModel.startsWith('glm-4-flash') ? 'zhipu' : 'silicon-flow');
+        
+        // 检查API密钥是否保存成功
+        const keyExists = modelType === 'custom' ? 
+                           Boolean(verifyConfig.customModel && verifyConfig.customModel.apiKey) :
+                           Boolean(verifyConfig.apiKeys && verifyConfig.apiKeys[modelType]);
+        
+        console.log(`验证: ${modelType} API密钥存在: ${keyExists}`);
         
         // Show save success notification
         const saveStatus = document.createElement('div');
-        saveStatus.textContent = 'Settings saved';
-        saveStatus.style.color = 'green';
+        saveStatus.textContent = keyExists ? 'Settings saved successfully' : 'Warning: API key may not be saved properly';
+        saveStatus.style.color = keyExists ? 'green' : 'orange';
         saveStatus.style.textAlign = 'center';
         saveStatus.style.marginTop = '5px';
         
+        // 移除已有的状态消息
+        const existingStatus = document.querySelector('.save-status');
+        if (existingStatus) {
+          existingStatus.remove();
+        }
+        
+        saveStatus.className = 'save-status';
         elements.saveSettingsBtn.insertAdjacentElement('afterend', saveStatus);
         
         setTimeout(() => {
           saveStatus.remove();
-        }, 2000);
+        }, 3000);
         
       } catch (error) {
         console.error('Error saving settings:', error);
-        UiService.showNotification('Error saving settings: ' + error.message, 'error');
+        
+        // 显示保存失败消息
+        const saveStatus = document.createElement('div');
+        saveStatus.textContent = `Error: ${error.message}`;
+        saveStatus.style.color = 'red';
+        saveStatus.style.textAlign = 'center';
+        saveStatus.style.marginTop = '5px';
+        saveStatus.className = 'save-status';
+        elements.saveSettingsBtn.insertAdjacentElement('afterend', saveStatus);
+        
+        setTimeout(() => {
+          saveStatus.remove();
+        }, 3000);
       }
     }
   } catch (error) {
