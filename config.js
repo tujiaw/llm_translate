@@ -63,6 +63,39 @@ const DEFAULT_CONFIG = {
  */
 class ConfigService {
   /**
+   * 深度合并对象，用于配置更新
+   * @param {object} target - 目标对象
+   * @param {object} source - 源对象
+   * @returns {object} 合并后的对象
+   * @private
+   */
+  static _deepMerge(target, source) {
+    const result = { ...target };
+    
+    for (const key in source) {
+      if (Object.prototype.hasOwnProperty.call(source, key)) {
+        if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
+          result[key] = this._deepMerge(result[key] || {}, source[key]);
+        } else {
+          result[key] = source[key];
+        }
+      }
+    }
+    
+    return result;
+  }
+  
+  /**
+   * 创建安全的配置对象，确保所有必要字段都存在
+   * @param {object} config - 用户配置
+   * @returns {object} 安全的配置对象
+   * @private
+   */
+  static _createSafeConfig(config) {
+    return this._deepMerge(DEFAULT_CONFIG, config || {});
+  }
+
+  /**
    * 加载配置
    * @returns {Promise<object>} 配置对象
    */
@@ -77,24 +110,8 @@ class ConfigService {
             return;
           }
           
-          // 确保各字段存在
-          const config = {
-            ...DEFAULT_CONFIG,
-            ...items,
-            // 确保modelDefinitions始终存在且包含所有默认模型
-            modelDefinitions: {
-              ...DEFAULT_CONFIG.modelDefinitions,
-              ...(items.modelDefinitions || {})
-            },
-            apiKeys: {
-              ...DEFAULT_CONFIG.apiKeys,
-              ...(items.apiKeys || {})
-            },
-            customModel: {
-              ...DEFAULT_CONFIG.customModel,
-              ...(items.customModel || {})
-            }
-          };
+          // 使用深度合并创建配置
+          const config = this._createSafeConfig(items);
           
           // 确保有效的currentModel
           if (!config.modelDefinitions[config.currentModel] && config.currentModel !== 'custom') {
@@ -127,23 +144,8 @@ class ConfigService {
   static async save(config) {
     return new Promise((resolve, reject) => {
       try {
-        // 确保必要的字段存在
-        const safeConfig = {
-          ...DEFAULT_CONFIG,
-          ...config,
-          modelDefinitions: {
-            ...DEFAULT_CONFIG.modelDefinitions,
-            ...(config.modelDefinitions || {})
-          },
-          apiKeys: {
-            ...DEFAULT_CONFIG.apiKeys,
-            ...(config.apiKeys || {})
-          },
-          customModel: {
-            ...DEFAULT_CONFIG.customModel,
-            ...(config.customModel || {})
-          }
-        };
+        // 创建安全的配置对象
+        const safeConfig = this._createSafeConfig(config);
         
         // 记录日志
         console.log('正在保存配置...');
