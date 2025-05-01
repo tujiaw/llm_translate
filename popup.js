@@ -297,11 +297,11 @@ document.addEventListener('DOMContentLoaded', async function() {
       
       if (inputElement.type === 'password') {
         inputElement.type = 'text';
-        imgElement.src = 'images/eye-close.png';
+        imgElement.src = 'images/eye.png';
         imgElement.alt = 'Hide';
       } else {
         inputElement.type = 'password';
-        imgElement.src = 'images/eye.png';
+        imgElement.src = 'images/eye-close.png';
         imgElement.alt = 'Show';
       }
     }

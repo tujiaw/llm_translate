@@ -127,7 +127,8 @@ class UiService {
     popup.style.position = 'absolute';
     popup.style.zIndex = '10000';
     popup.style.backgroundColor = 'white';
-    popup.style.padding = '15px';
+    popup.style.padding = '15px'; 
+
     popup.style.borderRadius = '8px';
     popup.style.boxShadow = '0 4px 15px rgba(0,0,0,0.2)';
     popup.style.minWidth = '200px';
