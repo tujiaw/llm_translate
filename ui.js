@@ -12,6 +12,48 @@ class UiService {
   }
 
   /**
+   * 计算元素在屏幕上的最佳位置
+   * @param {number} x - 初始X坐标
+   * @param {number} y - 初始Y坐标
+   * @param {number} width - 元素宽度
+   * @param {number} height - 元素高度
+   * @param {number} offset - 垂直偏移量
+   * @returns {Object} 计算后的位置 {x, y}
+   */
+  static calculatePosition(x, y, width, height, offset = 20) {
+    // 获取窗口尺寸
+    const windowWidth = window.innerWidth || document.documentElement.clientWidth;
+    const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+    
+    // 初始位置计算
+    let posX = x;
+    let posY = y + offset; // 默认在选中文本下方offset像素
+    
+    // 确保元素在屏幕内 - 水平方向
+    if (posX + width > windowWidth) {
+      posX = windowWidth - width - 5;
+    }
+    
+    // 确保元素不会太靠左
+    if (posX < 5) {
+      posX = 5;
+    }
+    
+    // 确保元素在屏幕内 - 垂直方向
+    if (posY + height > windowHeight) {
+      // 如果下方放不下，尝试放在上方
+      posY = y - height - 5;
+      
+      // 如果上方也放不下，就放在靠近底部但仍在屏幕内的位置
+      if (posY < 5) {
+        posY = windowHeight - height - 5;
+      }
+    }
+    
+    return { x: posX, y: posY };
+  }
+
+  /**
    * 创建翻译按钮
    * @param {number} x - X坐标
    * @param {number} y - Y坐标
@@ -37,38 +79,12 @@ class UiService {
     // 估计按钮尺寸
     const buttonRect = {width: 60, height: 30}; 
     
-    // 获取窗口尺寸
-    const windowWidth = window.innerWidth || document.documentElement.clientWidth;
-    const windowHeight = window.innerHeight || document.documentElement.clientHeight;
+    // 计算最佳位置
+    const position = UiService.calculatePosition(x, y, buttonRect.width, buttonRect.height);
     
-    // 初始位置计算
-    let posX = x;
-    let posY = y + 20; // 默认在选中文本下方20px
-    
-    // 确保按钮在屏幕内 - 水平方向
-    if (posX + buttonRect.width > windowWidth) {
-      posX = windowWidth - buttonRect.width - 5;
-    }
-    
-    // 确保按钮不会太靠左
-    if (posX < 5) {
-      posX = 5;
-    }
-    
-    // 确保按钮在屏幕内 - 垂直方向
-    if (posY + buttonRect.height > windowHeight) {
-      // 如果下方放不下，尝试放在上方
-      posY = y - buttonRect.height - 5;
-      
-      // 如果上方也放不下，就放在靠近底部但仍在屏幕内的位置
-      if (posY < 5) {
-        posY = windowHeight - buttonRect.height - 5;
-      }
-    }
-    
-    // 设置最终位置
-    button.style.left = `${posX}px`;
-    button.style.top = `${posY}px`;
+    // 设置位置
+    button.style.left = `${position.x}px`;
+    button.style.top = `${position.y}px`;
     
     // 将要翻译的文本保存在按钮的数据属性中
     button.dataset.textToTranslate = textToTranslate;
@@ -86,7 +102,7 @@ class UiService {
       
       // 调用传入的回调函数 - 使用计算后的位置
       if (typeof onTranslate === 'function') {
-        onTranslate(text, posX, posY);
+        onTranslate(text, position.x, position.y);
       }
     };
     
@@ -117,42 +133,16 @@ class UiService {
     popup.style.minWidth = '200px';
     popup.style.maxWidth = '400px';
     
-    // 获取窗口尺寸
-    const windowWidth = window.innerWidth || document.documentElement.clientWidth;
-    const windowHeight = window.innerHeight || document.documentElement.clientHeight;
-    
     // 估计弹窗尺寸 (需要考虑内容可能很长)
     const popupWidth = 400; // maxWidth
     const popupHeight = 200; // 估计高度
     
-    // 初始位置计算
-    let posX = x;
-    let posY = y + 20; // 默认在选中文本下方20px
+    // 计算最佳位置
+    const position = UiService.calculatePosition(x, y, popupWidth, popupHeight);
     
-    // 确保弹窗在屏幕内 - 水平方向
-    if (posX + popupWidth > windowWidth) {
-      posX = windowWidth - popupWidth - 10;
-    }
-    
-    // 确保弹窗不会太靠左
-    if (posX < 10) {
-      posX = 10;
-    }
-    
-    // 确保弹窗在屏幕内 - 垂直方向
-    if (posY + popupHeight > windowHeight) {
-      // 如果下方放不下，尝试放在上方
-      posY = y - popupHeight - 10;
-      
-      // 如果上方也放不下，就放在屏幕中央
-      if (posY < 10) {
-        posY = Math.max(10, (windowHeight - popupHeight) / 2);
-      }
-    }
-    
-    // 设置最终位置
-    popup.style.left = `${posX}px`;
-    popup.style.top = `${posY}px`;
+    // 设置位置
+    popup.style.left = `${position.x}px`;
+    popup.style.top = `${position.y}px`;
     
     // 加载指示器
     const loader = document.createElement('div');
