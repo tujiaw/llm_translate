@@ -95,11 +95,10 @@ class UiService {
     
     // 加载指示器
     const loader = document.createElement('div');
-    loader.style.textAlign = 'center';
     loader.style.padding = '10px';
     loader.innerHTML = `
-      <div style="display: inline-block; width: 20px; height: 20px; border: 3px solid rgba(0,0,0,0.1); border-radius: 50%; border-top: 3px solid #4CAF50; animation: llm-translate-spin 1s linear infinite;"></div>
-      <p style="margin: 10px 0 0; color: #666;">正在翻译...</p>
+      <div style="display: flex; justify-content: center;"><div style="width: 20px; height: 20px; border: 3px solid rgba(0,0,0,0.1); border-radius: 50%; border-top: 3px solid #4CAF50; animation: llm-translate-spin 1s linear infinite;"></div></div>
+      <p style="margin: 10px 0 0; color: #666; text-align: center;">正在翻译...</p>
     `;
     
     // 添加动画样式
@@ -174,6 +173,7 @@ class UiService {
     original.style.marginBottom = '8px';
     original.style.borderBottom = '1px solid #eee';
     original.style.paddingBottom = '8px';
+    original.style.textAlign = 'left';
     
     // 截断过长的原文
     if (originalText.length > 100) {
@@ -188,6 +188,7 @@ class UiService {
     result.style.fontSize = '14px';
     result.style.color = '#333';
     result.style.marginBottom = '10px';
+    result.style.textAlign = 'left';
     result.textContent = translatedText;
     
     // 添加到弹窗
@@ -211,11 +212,44 @@ class UiService {
    * @param {string} errorMessage - 错误信息
    */
   static showError(popup, originalText, errorMessage) {
-    return this.updatePopupWithTranslation(
-      popup, 
-      originalText, 
-      `Error: ${errorMessage}`
-    );
+    if (!popup || !document.body.contains(popup)) {
+      return null;
+    }
+    
+    // 清空原有内容
+    popup.innerHTML = '';
+    
+    // 原文
+    const original = document.createElement('div');
+    original.className = 'llm-original-text';
+    original.style.fontSize = '14px';
+    original.style.color = '#666';
+    original.style.marginBottom = '8px';
+    original.style.borderBottom = '1px solid #eee';
+    original.style.paddingBottom = '8px';
+    original.style.textAlign = 'left';
+    
+    // 截断过长的原文
+    if (originalText.length > 100) {
+      original.textContent = originalText.substring(0, 100) + '...';
+    } else {
+      original.textContent = originalText;
+    }
+    
+    // 错误信息
+    const result = document.createElement('div');
+    result.className = 'llm-error-text';
+    result.style.fontSize = '14px';
+    result.style.color = '#d32f2f';
+    result.style.marginBottom = '10px';
+    result.style.textAlign = 'left';
+    result.textContent = errorMessage;
+    
+    // 添加到弹窗
+    popup.appendChild(original);
+    popup.appendChild(result);
+    
+    return popup;
   }
 
   /**

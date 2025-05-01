@@ -82,13 +82,10 @@
         
         // 只在有文本被选中时才处理
         if (selectedText) {
-          console.log("1")
           handleTextSelection(event);
         } else {
-          console.log("2")
           UiService.safeRemoveTranslateButton();
           if (translationPopup && document.body.contains(translationPopup)) {
-            console.log("3")
             document.body.removeChild(translationPopup);
             translationPopup = null;
           }
