@@ -7,8 +7,8 @@ body {
 }
 
 .container {
-  width: 400px;
-  padding: 15px;
+  width: 360px;
+  padding: 6px;
 }
 
 h1 {
@@ -19,9 +19,9 @@ h1 {
 }
 
 h2 {
-  font-size: 16px;
-  margin-top: 15px;
-  margin-bottom: 10px;
+  font-size: 14px;
+  margin-top: 0;
+  margin-bottom: 8px;
   color: #2c3e50;
 }
 
@@ -32,42 +32,43 @@ h3 {
 }
 
 .translation-area {
-  margin-bottom: 20px;
+  margin-bottom: 6px;
 }
 
 textarea {
   width: 100%;
-  padding: 10px;
+  padding: 4px;
   box-sizing: border-box;
   border: 1px solid #ddd;
   border-radius: 4px;
   resize: vertical;
   font-family: inherit;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 #inputText {
-  height: 100px;
-  margin-bottom: 10px;
+  height: 80px;
+  margin-bottom: 8px;
 }
 
 .controls {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-bottom: 10px;
-  gap: 10px;
+  margin-bottom: 8px;
+  gap: 8px;
 }
 
 #translateBtn {
   background-color: #4CAF50;
   color: white;
   border: none;
-  padding: 8px 16px;
+  padding: 6px 12px;
   border-radius: 4px;
   cursor: pointer;
   font-weight: bold;
   transition: background-color 0.3s;
+  font-size: 13px;
 }
 
 #translateBtn:hover {
@@ -79,19 +80,19 @@ textarea {
 }
 
 #outputText {
-  height: 100px;
+  height: 80px;
   background-color: #f5f5f5;
 }
 
 .settings-section {
   background-color: #f0f0f0;
-  padding: 12px;
+  padding: 10px;
   border-radius: 6px;
-  margin-bottom: 15px;
+  margin-bottom: 12px;
 }
 
-.model-selection, .api-key {
-  margin-bottom: 12px;
+.model-selection {
+  margin-bottom: 10px;
 }
 
 label {
@@ -102,11 +103,11 @@ label {
 
 select, input[type="text"], input[type="password"] {
   width: 100%;
-  padding: 8px;
+  padding: 6px;
   box-sizing: border-box;
   border: 1px solid #ddd;
   border-radius: 4px;
-  font-size: 14px;
+  font-size: 13px;
 }
 
 .key-input-container {
@@ -130,13 +131,14 @@ select, input[type="text"], input[type="password"] {
   background-color: #2196F3;
   color: white;
   border: none;
-  padding: 8px 16px;
+  padding: 6px 12px;
   border-radius: 4px;
   cursor: pointer;
   font-weight: bold;
   width: 100%;
-  margin-top: 10px;
+  margin-top: 8px;
   transition: background-color 0.3s;
+  font-size: 13px;
 }
 
 #saveSettingsBtn:hover {
@@ -166,11 +168,11 @@ select, input[type="text"], input[type="password"] {
 
 .spinner {
   display: none;
-  width: 20px;
-  height: 20px;
-  border: 3px solid rgba(0, 0, 0, 0.1);
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(0, 0, 0, 0.1);
   border-radius: 50%;
-  border-top: 3px solid #4CAF50;
+  border-top: 2px solid #4CAF50;
   animation: spin 1s linear infinite;
 }
 

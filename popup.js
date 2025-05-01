@@ -66,24 +66,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         elements.customModelName.value = config.customModelName;
         elements.customModelEndpoint.value = config.customModelEndpoint;
         elements.apiKey.value = config.apiKey;
-        
-        // Show/hide custom model configuration based on current selection
-        toggleCustomModelConfig(elements);
       } catch (error) {
         console.error('Error loading settings:', error);
         UiService.showNotification('Error loading settings: ' + error.message, 'error');
-      }
-    }
-    
-    /**
-     * Toggle show/hide custom model configuration
-     * @param {object} elements - DOM elements object
-     */
-    function toggleCustomModelConfig(elements) {
-      if (elements.modelSelect.value === 'custom') {
-        elements.customModelConfig.classList.remove('hidden');
-      } else {
-        elements.customModelConfig.classList.add('hidden');
       }
     }
     
@@ -100,14 +85,14 @@ document.addEventListener('DOMContentLoaded', async function() {
       
       // Save settings button click event
       elements.saveSettingsBtn.addEventListener('click', () => saveSettings(elements));
-      
-      // Model selection change event
-      elements.modelSelect.addEventListener('change', () => toggleCustomModelConfig(elements));
-      
+ 
       // Text input change event, used to enable/disable translate button
       elements.inputText.addEventListener('input', () => {
         elements.translateBtn.disabled = !elements.inputText.value.trim();
       });
+
+      // Model select change event, auto save settings
+      elements.modelSelect.addEventListener('change', () => saveSettings(elements));
     }
     
     /**
