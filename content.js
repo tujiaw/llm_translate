@@ -118,7 +118,8 @@
       // If there is selected text, create quick translation button
       if (selectedText.length > 0) {
         const x = event.pageX || event.clientX + window.scrollX;
-        const y = event.pageY || event.clientY + window.scrollY;
+        let y = event.pageY || event.clientY + window.scrollY;
+        y += 12
         console.log('Creating translation button at position:', x, y);
         createTranslateButton(x, y, selectedText);
       }
