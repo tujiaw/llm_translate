@@ -1,10 +1,10 @@
 // background.js - 后台脚本
 
-// 使用ES模块导入替代importScripts
+// 使用静态导入
 import ConfigService from './config.js';
 import ApiService from './api.js';
-import MessagingService from './messaging.js';
 import TranslatorService from './translator.js';
+import Utils from './utils.js';
 
 console.log('LLM翻译扩展后台脚本已加载');
 

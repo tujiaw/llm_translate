@@ -44,10 +44,10 @@ document.addEventListener('DOMContentLoaded', async function() {
         siliconFlowApiKey: document.getElementById('siliconFlowApiKey'),
         zhipuApiKey: document.getElementById('zhipuApiKey'),
         customApiKey: document.getElementById('customApiKey'),
+        nativeLanguage: document.getElementById('nativeLanguage'),
         showSiliconFlowKeyBtn: document.getElementById('showSiliconFlowKeyBtn'),
         showZhipuKeyBtn: document.getElementById('showZhipuKeyBtn'),
         showCustomKeyBtn: document.getElementById('showCustomKeyBtn'),
-        saveSettingsBtn: document.getElementById('saveSettingsBtn'),
         loadingSpinner: document.getElementById('loadingSpinner'),
         apiKeyLinks: document.querySelectorAll('.api-key a')
       };
@@ -78,6 +78,14 @@ document.addEventListener('DOMContentLoaded', async function() {
           }
         }));
         
+        // 首先填充母语选择下拉框，提高用户体验
+        populateLanguageSelect(elements.nativeLanguage);
+        
+        // 设置当前选择的母语
+        if (config.nativeLanguage) {
+          elements.nativeLanguage.value = config.nativeLanguage;
+        }
+        
         // 设置当前选择的模型
         elements.modelSelect.value = config.currentModel || 'glm-4-9b';
         
@@ -104,6 +112,26 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
     
     /**
+     * 填充语言选择下拉框
+     * @param {HTMLSelectElement} selectElement - 选择框元素
+     */
+    function populateLanguageSelect(selectElement) {
+      // 清空现有选项
+      selectElement.innerHTML = '';
+      
+      // 获取支持的语言列表(英文名称)
+      const languages = Utils.getSupportedLanguagesInEnglish();
+      
+      // 添加选项
+      languages.forEach(lang => {
+        const option = document.createElement('option');
+        option.value = lang.code;
+        option.textContent = lang.name;
+        selectElement.appendChild(option);
+      });
+    }
+    
+    /**
      * Set up event listeners
      * @param {object} elements - DOM elements object
      */
@@ -116,19 +144,39 @@ document.addEventListener('DOMContentLoaded', async function() {
       elements.showZhipuKeyBtn.addEventListener('click', () => toggleApiKeyVisibility(elements.zhipuApiKey, elements.showZhipuKeyBtn));
       elements.showCustomKeyBtn.addEventListener('click', () => toggleApiKeyVisibility(elements.customApiKey, elements.showCustomKeyBtn));
       
-      // Save settings button click event
-      elements.saveSettingsBtn.addEventListener('click', () => saveSettings(elements));
- 
       // Text input change event, used to enable/disable translate button
       elements.inputText.addEventListener('input', () => {
-        elements.translateBtn.disabled = !elements.inputText.value.trim();
+        const text = elements.inputText.value.trim();
+        elements.translateBtn.disabled = !text;
       });
-
+      
+      // 母语选择变化时更新目标语言显示
+      elements.nativeLanguage.addEventListener('change', () => {
+        // 添加高亮动画效果
+        elements.nativeLanguage.classList.add('highlight-selection');
+        setTimeout(() => {
+          elements.nativeLanguage.classList.remove('highlight-selection');
+        }, 1000);
+        
+        // 自动保存设置
+        saveSettings(elements);
+      });
+      
       // Model select change event
       elements.modelSelect.addEventListener('change', () => {
         const selectedModel = elements.modelSelect.value;
         updateUiForSelectedModel(elements, selectedModel);
+        
+        // 自动保存设置
+        saveSettings(elements);
       });
+      
+      // 为API密钥输入框添加change和blur事件以自动保存
+      elements.siliconFlowApiKey.addEventListener('blur', () => saveSettings(elements));
+      elements.zhipuApiKey.addEventListener('blur', () => saveSettings(elements));
+      elements.customApiKey.addEventListener('blur', () => saveSettings(elements));
+      elements.customModelName.addEventListener('blur', () => saveSettings(elements));
+      elements.customModelEndpoint.addEventListener('blur', () => saveSettings(elements));
       
       // 为API密钥链接添加点击事件
       elements.apiKeyLinks.forEach(link => {
@@ -216,7 +264,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       
       try {
         // Show loading state
-        elements.loadingSpinner.style.display = 'block';
+        elements.loadingSpinner.classList.add('visible');
         elements.translateBtn.disabled = true;
         
         // Load configuration
@@ -266,10 +314,6 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
         
         try {
-          // 检测语言
-          const isChineseQuery = Utils.isChineseText(text);
-          console.log('Is Chinese query:', isChineseQuery);
-          
           // 调用翻译API
           const translatedText = await ApiService.translate(text, config);
           elements.outputText.value = translatedText.trim();
@@ -282,7 +326,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         elements.outputText.value = `Translation error: ${error.message}`;
       } finally {
         // Restore UI state
-        elements.loadingSpinner.style.display = 'none';
+        elements.loadingSpinner.classList.remove('visible');
         elements.translateBtn.disabled = false;
       }
     }
@@ -320,6 +364,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         const zhipuKey = elements.zhipuApiKey.value.trim();
         const customKey = elements.customApiKey.value.trim();
         
+        // 获取选择的母语
+        const nativeLanguage = elements.nativeLanguage.value;
+        
         // 加载当前配置
         const currentConfig = await ConfigService.load();
         
@@ -327,6 +374,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         const newConfig = {
           ...currentConfig,
           currentModel: currentModel,
+          nativeLanguage: nativeLanguage,
           apiKeys: {
             'silicon-flow': siliconFlowKey,
             'zhipu': zhipuKey
@@ -343,53 +391,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         // 保存配置
         await ConfigService.save(newConfig);
         
-        // 验证保存是否成功
-        const verifyConfig = await ConfigService.load();
-        const modelType = currentModel === 'custom' ? 'custom' : 
-                          (currentModel.startsWith('glm-4-flash') ? 'zhipu' : 'silicon-flow');
-        
-        // 检查API密钥是否保存成功
-        const keyExists = modelType === 'custom' ? 
-                           Boolean(verifyConfig.customModel && verifyConfig.customModel.apiKey) :
-                           Boolean(verifyConfig.apiKeys && verifyConfig.apiKeys[modelType]);
-        
-        console.log(`验证: ${modelType} API密钥存在: ${keyExists}`);
-        
-        // Show save success notification
-        const saveStatus = document.createElement('div');
-        saveStatus.textContent = keyExists ? 'Settings saved successfully' : 'Warning: API key may not be saved properly';
-        saveStatus.style.color = keyExists ? 'green' : 'orange';
-        saveStatus.style.textAlign = 'center';
-        saveStatus.style.marginTop = '5px';
-        
-        // 移除已有的状态消息
-        const existingStatus = document.querySelector('.save-status');
-        if (existingStatus) {
-          existingStatus.remove();
-        }
-        
-        saveStatus.className = 'save-status';
-        elements.saveSettingsBtn.insertAdjacentElement('afterend', saveStatus);
-        
-        setTimeout(() => {
-          saveStatus.remove();
-        }, 3000);
-        
+        console.log('设置已自动保存');
       } catch (error) {
         console.error('Error saving settings:', error);
-        
-        // 显示保存失败消息
-        const saveStatus = document.createElement('div');
-        saveStatus.textContent = `Error: ${error.message}`;
-        saveStatus.style.color = 'red';
-        saveStatus.style.textAlign = 'center';
-        saveStatus.style.marginTop = '5px';
-        saveStatus.className = 'save-status';
-        elements.saveSettingsBtn.insertAdjacentElement('afterend', saveStatus);
-        
-        setTimeout(() => {
-          saveStatus.remove();
-        }, 3000);
       }
     }
   } catch (error) {

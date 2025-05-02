@@ -1,4 +1,5 @@
 // api.js - 处理所有LLM API调用
+import Utils from './utils.js';
 
 /**
  * API服务类 - 处理所有与LLM模型API相关的逻辑
@@ -26,16 +27,64 @@ class ApiService {
    * @param {boolean} isChineseQuery - 是否为中文查询
    * @returns {object} 包含apiEndpoint和requestBody的配置对象
    */
-  static createRequestConfig(config, text, isChineseQuery) {
+  static async createRequestConfig(config, text, isChineseQuery) {
     console.log('创建请求配置，输入配置:', JSON.stringify({
       currentModel: config.currentModel,
       hasApiKeys: Boolean(config.apiKeys),
       hasCustomModel: Boolean(config.customModel),
-      modelDefinitions: Boolean(config.modelDefinitions)
+      modelDefinitions: Boolean(config.modelDefinitions),
+      nativeLanguage: config.nativeLanguage
     }));
     
-    const sourceLang = isChineseQuery ? 'Chinese' : 'English';
-    const targetLang = isChineseQuery ? 'English' : 'Chinese';
+    // 获取用户母语，默认为中文
+    const nativeLanguage = config.nativeLanguage || 'zh';
+    
+    // 获取源语言和目标语言
+    let sourceLang, targetLang, detectResult;
+    
+    // 使用Utils进行语言检测
+    try {
+      // 直接使用静态导入的Utils
+      
+      // 获取语言检测结果
+      detectResult = Utils.detectLanguage(text);
+      console.log(`语言检测结果: 检测语言=${detectResult}, 用户母语=${nativeLanguage}`);
+      
+      // 改进的翻译逻辑：在检测到的语言和母语之间智能翻译
+      if (detectResult === 'unknown') {
+        // 如果检测到未知语言，则使用简单的中英文检测
+        if (isChineseQuery) {
+          sourceLang = 'Chinese';
+          // 如果用户母语是中文，则翻译为英语；否则翻译为用户母语
+          targetLang = (nativeLanguage === 'zh') ? 'English' : Utils.getLanguageNameInEnglish(nativeLanguage);
+        } else {
+          sourceLang = 'English';
+          // 默认翻译为用户母语
+          targetLang = Utils.getLanguageNameInEnglish(nativeLanguage);
+        }
+      } else if (detectResult === nativeLanguage) {
+        // 如果检测到的语言与母语相同，默认翻译为英语
+        sourceLang = Utils.getLanguageNameInEnglish(nativeLanguage);
+        targetLang = 'English';
+      } else {
+        // 检测到的语言不是母语，翻译为母语
+        sourceLang = Utils.getLanguageNameInEnglish(detectResult);
+        targetLang = Utils.getLanguageNameInEnglish(nativeLanguage);
+      }
+    } catch (error) {
+      console.error('语言检测错误:', error);
+      // 回退到简单检测方式
+      if (isChineseQuery) {
+        sourceLang = 'Chinese';
+        targetLang = (nativeLanguage === 'zh') ? 'English' : 'Chinese';
+      } else {
+        sourceLang = 'English';
+        targetLang = (nativeLanguage === 'en') ? 'Chinese' : Utils.getLanguageNameInEnglish(nativeLanguage);
+      }
+    }
+    
+    console.log(`语言检测结果: 源语言=${sourceLang}, 目标语言=${targetLang}`);
+    
     const systemPrompt = `You are a translation assistant. Please translate the following ${sourceLang} text into ${targetLang}, maintaining the original meaning, format, and tone. Output only the translation result without any explanation or additional content.`;
     // 获取当前选择的模型信息
     let modelInfo;
@@ -181,7 +230,7 @@ class ApiService {
     const isChineseQuery = /[\u4e00-\u9fa5]/.test(text);
     
     // 创建请求配置
-    const { apiEndpoint, requestBody, modelType } = this.createRequestConfig(
+    const { apiEndpoint, requestBody, modelType } = await this.createRequestConfig(
       config,
       text,
       isChineseQuery

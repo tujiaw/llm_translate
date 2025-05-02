@@ -7,6 +7,9 @@ const DEFAULT_CONFIG = {
   // 当前选择的模型
   currentModel: 'glm-4-9b',
   
+  // Native language setting
+  nativeLanguage: 'zh',
+  
   // 模型定义列表
   modelDefinitions: {
     // 免费模型

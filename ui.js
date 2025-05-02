@@ -87,7 +87,7 @@ class UiService {
     loader.style.padding = '10px';
     loader.innerHTML = `
       <div style="display: flex; justify-content: center;"><div style="width: 20px; height: 20px; border: 3px solid rgba(0,0,0,0.1); border-radius: 50%; border-top: 3px solid #4CAF50; animation: llm-translate-spin 1s linear infinite;"></div></div>
-      <p style="margin: 10px 0 0; color: #666; text-align: center;">正在翻译...</p>
+      <p style="margin: 10px 0 0; color: #666; text-align: center;">Translating...</p>
     `;
     
     // 添加动画样式

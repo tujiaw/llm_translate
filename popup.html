@@ -9,14 +9,24 @@
   <div class="container">
     <div class="settings-section">
       <h2>LLM Translation</h2>
-      <div class="translation-area">
-        <textarea id="inputText" placeholder="Enter text to translate..."></textarea>
+      
+      <div class="language-preference-row">
+        <div class="language-preference">
+          <label for="nativeLanguage">My Native Language</label>
+          <select id="nativeLanguage">
+            <!-- 选项将通过JavaScript动态加载 -->
+          </select>
+        </div>
         <div class="controls">
           <button id="translateBtn">Translate</button>
-          <div class="spinner" id="loadingSpinner"></div>
         </div>
+      </div>
+      
+      <div class="translation-area">
+        <textarea id="inputText" placeholder="Enter text to translate..."></textarea>
         <div class="result-container">
           <textarea id="outputText" placeholder="Translation result..." readonly></textarea>
+          <div class="spinner" id="loadingSpinner"></div>
         </div>
       </div>
     </div>
@@ -71,8 +81,6 @@
           </div>
         </div>
       </div>
-      
-      <button id="saveSettingsBtn">Save Settings</button>
     </div>
   <script src="popup.js" type="module"></script>
 </body>
