@@ -51,8 +51,8 @@
           console.log('发送选中文本:', selectedText);
           return { selectedText: selectedText };
         } else if (request.action === "translate") {
-          console.log('收到翻译结果:', request.result);
-          handleTranslation(request.text, request.result);
+          console.log('收到翻译结果:', request.result, '是否错误:', request.isError);
+          handleTranslation(request.text, request.result, request.isError);
         } else if (request.action === "showLoadingPopup") {
           console.log('显示加载弹窗');
           // 获取当前鼠标位置
@@ -180,23 +180,19 @@
      * 处理翻译结果
      * @param {string} originalText - 原文本
      * @param {string} translatedText - 翻译结果
+     * @param {boolean} isError - 是否为错误信息
      */
-    function handleTranslation(originalText, translatedText) {
+    function handleTranslation(originalText, translatedText, isError = false) {
       // Ensure parameters are valid to avoid subsequent operation failures
       originalText = originalText || '';
       translatedText = translatedText || '';
       
       console.log('Processing translation result, original:', Utils.truncateText(originalText, 50));
-      console.log('Translation result:', Utils.truncateText(translatedText, 50));
-      
-      // 检查是否为错误消息
-      const isErrorMessage = translatedText.includes('Please configure API key') || 
-                            translatedText.includes('Error') || 
-                            translatedText.includes('错误');
+      console.log('Translation result:', Utils.truncateText(translatedText, 50), 'isError:', isError);
       
       // Use UI service to update popup content
       if (translationPopup && document.body.contains(translationPopup)) {
-        if (isErrorMessage) {
+        if (isError) {
           UiService.showError(translationPopup, originalText, translatedText);
         } else {
           UiService.updatePopupWithTranslation(translationPopup, originalText, translatedText);

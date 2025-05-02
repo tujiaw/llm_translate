@@ -40,11 +40,17 @@ function logConfigInfo(config, prefix = '') {
  * @param {string} action - 操作类型
  * @param {string} text - 原始文本
  * @param {string} result - 结果或错误信息
+ * @param {boolean} isError - 是否为错误信息
  */
-function sendMessageToTab(tabId, action, text, result) {
+function sendMessageToTab(tabId, action, text, result, isError = false) {
   if (tabId) {
-    chrome.tabs.sendMessage(tabId, { action, text, result });
-    console.log(`已发送${action}消息到标签页:`, tabId);
+    chrome.tabs.sendMessage(tabId, { 
+      action, 
+      text, 
+      result,
+      isError // 添加错误状态标识
+    });
+    console.log(`已发送${action}消息到标签页:`, tabId, isError ? '(错误)' : '');
   }
 }
 
@@ -58,7 +64,7 @@ function sendMessageToTab(tabId, action, text, result) {
 function handleTranslationError(error, context, tabId, text) {
   console.error(`${context}:`, error);
   if (tabId) {
-    sendMessageToTab(tabId, "translate", text, `${context}: ${error.message}`);
+    sendMessageToTab(tabId, "translate", text, `${context}: ${error.message}`, true);
   }
 }
 
@@ -183,7 +189,7 @@ function getApiKey(modelType, config, text, tabId) {
   if (!apiKey) {
     console.log(`错误: ${modelType} 的API密钥未设置`);
     sendMessageToTab(tabId, "translate", text, 
-      `Please configure API key in extension settings first.\n\n请先在扩展设置中配置 ${modelType} 的API密钥。`);
+      `Please configure API key in extension settings first.\n\n请先在扩展设置中配置 ${modelType} 的API密钥。`, true);
     return null;
   }
   
@@ -224,7 +230,7 @@ function performTranslation(text, tabId) {
       TranslatorService.translate(text)
         .then(translatedText => {
           console.log('翻译成功:', translatedText);
-          sendMessageToTab(tabId, "translate", text, translatedText);
+          sendMessageToTab(tabId, "translate", text, translatedText, false);
         })
         .catch(error => {
           handleTranslationError(error, '翻译过程中出错', tabId, text);
