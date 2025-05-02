@@ -78,27 +78,7 @@ class ApiService {
     // 根据模型类型创建请求体
     switch (modelType) {
       case 'silicon-flow':
-        requestBody = {
-          model: modelName,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: text }
-          ],
-          temperature: 0.3
-        };
-        break;
-        
       case 'zhipu':
-        requestBody = {
-          model: modelName,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: text }
-          ],
-          temperature: 0.3
-        };
-        break;
-        
       case 'gpt':
         requestBody = {
           model: modelName,
@@ -109,7 +89,7 @@ class ApiService {
           temperature: 0.3
         };
         break;
-        
+                
       case 'claude':
         requestBody = {
           model: modelName,

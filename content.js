@@ -164,7 +164,8 @@
      */
     async function sendTranslationRequest(text) {
       try {
-        await MessagingService.sendMessage({
+        // 不等待响应，只发送消息
+        chrome.runtime.sendMessage({
           action: "performTranslation",
           text: text
         });

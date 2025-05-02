@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "LLM翻译",
   "version": "1.0.0",
-  "description": "使用大模型API进行中英文互译的Chrome插件",
+  "description": "使用免费大模型API进行中英文互译的Chrome插件",
   "permissions": [
     "storage", 
     "contextMenus", 

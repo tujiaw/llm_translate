@@ -129,10 +129,15 @@ function setupMessageListeners() {
     if (request.action === "performTranslation") {
       const tabId = sender.tab ? sender.tab.id : null;
       console.log('消息请求翻译，文本:', request.text, '标签ID:', tabId);
+      
+      // 立即返回确认消息，避免等待异步操作
+      sendResponse({ status: 'translating' });
+      
+      // 异步执行翻译，不影响消息响应
       performTranslation(request.text, tabId);
     }
     
-    return true; // 保持消息通道开放
+    // 不需要返回true，因为已经同步响应
   });
 }
 

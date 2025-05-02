@@ -17,18 +17,27 @@ class MessagingService {
   /**
    * 安全发送消息到后台脚本
    * @param {object} message - 消息对象
+   * @param {number} [timeout=30000] - 超时时间(毫秒)
    * @returns {Promise<any>} 消息响应
    */
-  static async sendMessage(message) {
+  static async sendMessage(message, timeout = 30000) {
     if (!this.isExtensionActive) {
       throw new Error('扩展上下文已失效，无法发送消息');
     }
 
     return new Promise((resolve, reject) => {
+      // 设置超时处理
+      const timeoutId = setTimeout(() => {
+        reject(new Error('消息响应超时'));
+      }, timeout);
+      
       try {
         chrome.runtime.sendMessage(message, (response) => {
+          clearTimeout(timeoutId); // 清除超时计时器
+          
           if (chrome.runtime.lastError) {
             const error = chrome.runtime.lastError;
+            console.error('发送消息出错:', error.message);
             if (error.message && error.message.includes('Extension context invalidated')) {
               this.handleExtensionInvalidation();
             }
@@ -38,6 +47,8 @@ class MessagingService {
           }
         });
       } catch (error) {
+        clearTimeout(timeoutId); // 清除超时计时器
+        console.error('发送消息异常:', error);
         if (error.message && error.message.includes('Extension context invalidated')) {
           this.handleExtensionInvalidation();
         }
@@ -87,22 +98,50 @@ class MessagingService {
     chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       try {
         const result = callback(request, sender);
+        
+        // 处理异步回调
         if (result instanceof Promise) {
-          result
-            .then(data => sendResponse(data))
-            .catch(error => sendResponse({ error: error.message }));
+          // 为异步Promise设置超时保护
+          const timeoutPromise = new Promise((_, reject) => {
+            setTimeout(() => reject(new Error('处理消息超时')), 25000);
+          });
+          
+          // 竞争Promise
+          Promise.race([result, timeoutPromise])
+            .then(data => {
+              try {
+                sendResponse(data);
+              } catch (err) {
+                console.error('发送响应时出错:', err);
+              }
+            })
+            .catch(error => {
+              console.error('处理异步消息时出错:', error);
+              try {
+                sendResponse({ error: error.message });
+              } catch (err) {
+                console.error('发送错误响应时出错:', err);
+              }
+            });
+            
           return true; // 保持通道开放，异步响应
         } else if (result !== undefined) {
+          // 同步结果直接返回
           sendResponse(result);
+          return false; // 不需要保持通道开放
         }
       } catch (error) {
         console.error('处理消息时出错:', error);
         if (error.message && error.message.includes('Extension context invalidated')) {
           this.handleExtensionInvalidation();
         }
-        sendResponse({ error: error.message });
+        try {
+          sendResponse({ error: error.message });
+        } catch (err) {
+          console.error('发送错误响应时出错:', err);
+        }
       }
-      return true;
+      return false; // 默认不保持通道开放
     });
   }
 
