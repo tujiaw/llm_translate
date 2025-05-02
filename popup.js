@@ -272,7 +272,7 @@ document.addEventListener('DOMContentLoaded', async function() {
           
           // 调用翻译API
           const translatedText = await ApiService.translate(text, config);
-          elements.outputText.value = translatedText;
+          elements.outputText.value = translatedText.trim();
         } catch (error) {
           console.error('Translation error:', error);
           elements.outputText.value = `Translation error: ${error.message}`;

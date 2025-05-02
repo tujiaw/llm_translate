@@ -184,8 +184,8 @@
      */
     function handleTranslation(originalText, translatedText, isError = false) {
       // Ensure parameters are valid to avoid subsequent operation failures
-      originalText = originalText || '';
-      translatedText = translatedText || '';
+      originalText = (originalText || '').trim();
+      translatedText = (translatedText || '').trim();
       
       console.log('Processing translation result, original:', Utils.truncateText(originalText, 50));
       console.log('Translation result:', Utils.truncateText(translatedText, 50), 'isError:', isError);
