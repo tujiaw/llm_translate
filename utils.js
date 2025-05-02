@@ -105,20 +105,6 @@ class Utils {
   }
 
   /**
-   * 获取带有参数的URL
-   * @param {string} baseUrl - 基础URL
-   * @param {object} params - URL参数对象
-   * @returns {string} 完整URL
-   */
-  static getUrlWithParams(baseUrl, params = {}) {
-    const url = new URL(baseUrl);
-    Object.keys(params).forEach(key => {
-      url.searchParams.append(key, params[key]);
-    });
-    return url.toString();
-  }
-
-  /**
    * 防抖函数 - 在一定时间内只执行最后一次
    * @param {Function} func - 要防抖的函数
    * @param {number} wait - 等待时间(毫秒)
@@ -132,85 +118,6 @@ class Utils {
         func.apply(this, args);
       }, wait);
     };
-  }
-
-  /**
-   * 节流函数 - 在一定时间内最多执行一次
-   * @param {Function} func - 要节流的函数
-   * @param {number} limit - 执行间隔(毫秒)
-   * @returns {Function} 节流后的函数
-   */
-  static throttle(func, limit = 300) {
-    let inThrottle;
-    return function(...args) {
-      if (!inThrottle) {
-        func.apply(this, args);
-        inThrottle = true;
-        setTimeout(() => inThrottle = false, limit);
-      }
-    };
-  }
-
-  /**
-   * 确保函数只执行一次
-   * @param {Function} func - 要执行的函数
-   * @returns {Function} 包装后的函数
-   */
-  static once(func) {
-    let called = false;
-    let result;
-    return function(...args) {
-      if (!called) {
-        called = true;
-        result = func.apply(this, args);
-      }
-      return result;
-    };
-  }
-
-  /**
-   * 安全地解析JSON字符串
-   * @param {string} jsonString - JSON字符串
-   * @param {*} defaultValue - 解析失败时的默认值
-   * @returns {*} 解析结果或默认值
-   */
-  static safeJsonParse(jsonString, defaultValue = {}) {
-    try {
-      return JSON.parse(jsonString);
-    } catch (e) {
-      console.error('JSON解析错误:', e);
-      return defaultValue;
-    }
-  }
-  
-  /**
-   * 生成唯一ID
-   * @returns {string} 唯一ID
-   */
-  static generateUniqueId() {
-    return Date.now().toString(36) + Math.random().toString(36).substring(2);
-  }
-  
-  /**
-   * 获取支持的语言列表
-   * @returns {Array} 语言选项列表，包含code和name
-   */
-  static getSupportedLanguages() {
-    return [
-      { code: 'zh', name: '中文' },
-      { code: 'en', name: '英语' },
-      { code: 'ja', name: '日语' },
-      { code: 'ko', name: '韩语' },
-      { code: 'ru', name: '俄语' },
-      { code: 'fr', name: '法语' },
-      { code: 'de', name: '德语' },
-      { code: 'es', name: '西班牙语' },
-      { code: 'it', name: '意大利语' },
-      { code: 'ar', name: '阿拉伯语' },
-      { code: 'hi', name: '印地语' },
-      { code: 'he', name: '希伯来语' },
-      { code: 'th', name: '泰语' }
-    ];
   }
 
   /**
