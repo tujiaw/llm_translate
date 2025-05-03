@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Free LLM Translation",
   "version": "1.0.0",
-  "description": "Chrome extension for multilingual intelligent translation using free LLM APIs, supporting translation between Chinese, English, Japanese, Korean and other languages",
+  "description": "Multilingual translation extension using free LLM APIs",
   "permissions": [
     "storage", 
     "contextMenus", 
