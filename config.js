@@ -48,7 +48,7 @@ const DEFAULT_CONFIG = {
   
   // API密钥设置
   apiKeys: {
-    'silicon-flow': '1234567890',
+    'silicon-flow': '',
     'zhipu': ''
   },
   

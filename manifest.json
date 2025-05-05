@@ -5,9 +5,7 @@
   "description": "Multilingual translation extension using free LLM APIs",
   "permissions": [
     "storage", 
-    "contextMenus", 
     "activeTab",
-    "scripting",
     "tabs"
   ],
   "host_permissions": [

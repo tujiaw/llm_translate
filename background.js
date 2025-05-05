@@ -8,9 +8,6 @@ import Utils from './utils.js';
 
 console.log('LLM翻译扩展后台脚本已加载');
 
-// 创建右键菜单
-setupContextMenu();
-
 // 初始化配置
 initializeConfig();
 
@@ -66,40 +63,6 @@ function handleTranslationError(error, context, tabId, text) {
   if (tabId) {
     sendMessageToTab(tabId, "translate", text, `${context}: ${error.message}`, true);
   }
-}
-
-/**
- * 设置右键菜单
- */
-function setupContextMenu() {
-  // 在插件安装或更新时执行
-  chrome.runtime.onInstalled.addListener(() => {
-    console.log('插件已安装或更新');
-    
-    // 创建右键菜单
-    chrome.contextMenus.create({
-      id: "translateSelection",
-      title: "翻译选中文本",
-      contexts: ["selection"]
-    });
-    console.log('已创建右键菜单');
-  });
-  
-  // 监听右键菜单点击
-  chrome.contextMenus.onClicked.addListener((info, tab) => {
-    if (info.menuItemId === "translateSelection") {
-      const selectedText = info.selectionText;
-      console.log('右键菜单触发翻译，选中文本:', selectedText);
-      
-      // 发送消息到内容脚本，显示加载中的弹窗
-      chrome.tabs.sendMessage(tab.id, {
-        action: "showLoadingPopup"
-      });
-      
-      // 执行翻译
-      performTranslation(selectedText, tab.id);
-    }
-  });
 }
 
 /**
