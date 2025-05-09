@@ -1,6 +1,6 @@
 .llm-translate-button {
   position: absolute;
-  z-index: 10000;
+  z-index: 2147483647;
   background-color: rgba(255, 255, 255, 0.8);
   width: 24px;
   height: 24px;
@@ -9,10 +9,20 @@
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.12);
   font-family: Arial, sans-serif;
   transition: transform 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
   border: 1px solid rgba(0, 0, 0, 0.1);
+}
+
+.llm-translate-button img {
+  display: block !important;
+  margin: auto !important;
+  width: 16px !important;
+  height: 16px !important;
+  position: relative !important;
+  object-fit: contain !important;
+  padding: 0 !important;
 }
 
 .llm-translate-button:hover {
@@ -23,7 +33,7 @@
 
 .llm-translation-popup {
   position: absolute;
-  z-index: 10000;
+  z-index: 2147483647;
   background-color: white;
   padding: 15px;
   border-radius: 8px;

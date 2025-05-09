@@ -26,17 +26,15 @@ class UiService {
     const button = document.createElement('div');
     button.className = 'llm-translate-button';
     
+    // 设置位置
+    button.style.left = `${x}px`;
+    button.style.top = `${y}px`;
+    
     // 使用图标替代文本
     const img = document.createElement('img');
     img.src = chrome.runtime.getURL('images/icon16.png');
     img.alt = '翻译';
-    img.style.width = '16px';
-    img.style.height = '16px';
     button.appendChild(img);
-    
-    // 设置位置
-    button.style.left = `${x}px`;
-    button.style.top = `${y}px`;
     
     // 将要翻译的文本保存在按钮的数据属性中
     button.dataset.textToTranslate = textToTranslate;
