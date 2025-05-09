@@ -1,12 +1,11 @@
 {
   "manifest_version": 3,
   "name": "Free LLM Translation",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "Multilingual translation extension using free LLM APIs",
   "permissions": [
     "storage", 
-    "activeTab",
-    "tabs"
+    "activeTab"
   ],
   "host_permissions": [
     "https://api.siliconflow.cn/*",
@@ -22,7 +21,8 @@
     "https://api.stability.ai/*",
     "https://api.cloudflare.com/*",
     "https://api.together.xyz/*",
-    "https://api.groq.com/*"
+    "https://api.groq.com/*",
+    "https://api.deepseek.com/*"
   ],
   "action": {
     "default_popup": "popup.html",
