@@ -37,6 +37,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         inputText: document.getElementById('inputText'),
         outputText: document.getElementById('outputText'),
         translateBtn: document.getElementById('translateBtn'),
+        translateWebpageBtn: document.getElementById('translateWebpageBtn'),
+        clearTranslationsBtn: document.getElementById('clearTranslationsBtn'),
         modelSelect: document.getElementById('modelSelect'),
         customModelConfig: document.getElementById('customModelConfig'),
         customModelName: document.getElementById('customModelName'),
@@ -138,6 +140,12 @@ document.addEventListener('DOMContentLoaded', async function() {
     function setupEventListeners(elements) {
       // Translate button click event
       elements.translateBtn.addEventListener('click', () => translateText(elements));
+      
+      // 全网页翻译按钮点击事件
+      elements.translateWebpageBtn.addEventListener('click', () => translateWebpage(elements));
+      
+      // 清除翻译按钮点击事件
+      elements.clearTranslationsBtn.addEventListener('click', () => clearWebpageTranslations(elements));
       
       // Show/hide API key buttons
       elements.showSiliconFlowKeyBtn.addEventListener('click', () => toggleApiKeyVisibility(elements.siliconFlowApiKey, elements.showSiliconFlowKeyBtn));
@@ -394,6 +402,86 @@ document.addEventListener('DOMContentLoaded', async function() {
         console.log('设置已自动保存');
       } catch (error) {
         console.error('Error saving settings:', error);
+      }
+    }
+    
+    /**
+     * 执行全网页翻译
+     * @param {object} elements - DOM元素对象
+     */
+    async function translateWebpage(elements) {
+      try {
+        // 禁用按钮，避免重复点击
+        elements.translateWebpageBtn.disabled = true;
+        elements.translateWebpageBtn.textContent = 'Translating...';
+        
+        // 获取当前活动标签页
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        
+        if (!activeTab) {
+          throw new Error('无法获取当前标签页');
+        }
+        
+        console.log('发送全网页翻译请求到内容脚本');
+        
+        // 向内容脚本发送翻译请求
+        const response = await chrome.tabs.sendMessage(activeTab.id, { 
+          action: 'translateWebpage'
+        });
+        
+        if (!response || !response.success) {
+          throw new Error('翻译请求未成功发送');
+        }
+        
+        // 关闭popup窗口
+        window.close();
+      } catch (error) {
+        console.error('执行全网页翻译时出错:', error);
+        UiService.showNotification(`全网页翻译失败: ${error.message}`, 'error');
+        
+        // 重置按钮状态
+        elements.translateWebpageBtn.disabled = false;
+        elements.translateWebpageBtn.textContent = 'Translate Current Page';
+      }
+    }
+    
+    /**
+     * 清除网页翻译标签
+     * @param {object} elements - DOM元素对象
+     */
+    async function clearWebpageTranslations(elements) {
+      try {
+        // 禁用按钮，避免重复点击
+        elements.clearTranslationsBtn.disabled = true;
+        elements.clearTranslationsBtn.textContent = 'Clearing...';
+        
+        // 获取当前活动标签页
+        const [activeTab] = await chrome.tabs.query({ active: true, currentWindow: true });
+        
+        if (!activeTab) {
+          throw new Error('无法获取当前标签页');
+        }
+        
+        console.log('发送清除翻译请求到内容脚本');
+        
+        // 向内容脚本发送清除请求
+        const response = await chrome.tabs.sendMessage(activeTab.id, { 
+          action: 'clearWebpageTranslations'
+        });
+        
+        if (!response || !response.success) {
+          throw new Error('清除请求未成功发送');
+        }
+        
+        // 关闭popup窗口
+        window.close();
+      } catch (error) {
+        console.error('清除网页翻译时出错:', error);
+        UiService.showNotification(`清除翻译失败: ${error.message}`, 'error');
+        
+        // 重置按钮状态
+        elements.clearTranslationsBtn.disabled = false;
+        elements.clearTranslationsBtn.textContent = 'Clear Translations';
       }
     }
   } catch (error) {

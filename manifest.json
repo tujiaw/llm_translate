@@ -59,6 +59,7 @@
         "messaging.js",
         "utils.js",
         "translator.js",
+        "webpage_translator.js",
         "images/*.svg",
         "images/*.png"
       ],

@@ -100,4 +100,45 @@
   background-color: #e3f2fd;
   color: #0d47a1;
   border-left: 4px solid #2196f3;
+}
+
+/* 添加全网页翻译相关的样式 */
+.llm-translation-label {
+  color: #333;
+  background-color: rgba(255, 255, 240, 0.95);
+  font-size: 13px;
+  line-height: 1.4;
+  padding: 3px 5px;
+  margin-top: 3px;
+  border-left: 2px solid #4CAF50;
+  font-family: Arial, sans-serif;
+  word-wrap: break-word;
+  z-index: 10000;
+  transition: background-color 0.3s ease;
+}
+
+.llm-translation-label:hover {
+  background-color: rgba(255, 255, 200, 0.98) !important;
+}
+
+/* 全网页翻译状态框样式 */
+#llm-translation-status {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  background-color: white;
+  border: 1px solid #ccc;
+  border-radius: 4px;
+  padding: 10px 15px;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+  z-index: 10001;
+  font-family: Arial, sans-serif;
+  font-size: 14px;
+  transition: opacity 0.5s ease;
+}
+
+/* 翻译标签加载动画 */
+@keyframes llm-translate-spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
 } 

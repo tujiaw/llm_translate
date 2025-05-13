@@ -104,6 +104,21 @@ function setupMessageListeners() {
       
       // 异步执行翻译，不影响消息响应
       performTranslation(request.text, tabId);
+    } else if (request.action === "getConfig") {
+      // 处理获取配置的请求
+      console.log('收到获取配置请求');
+      
+      // 由于ConfigService.load是异步的，需要特殊处理
+      ConfigService.load().then(config => {
+        console.log('已加载配置并准备返回');
+        sendResponse({ config: config });
+      }).catch(error => {
+        console.error('加载配置时出错:', error);
+        sendResponse({ error: error.message });
+      });
+      
+      // 返回true表示将使用异步响应
+      return true;
     }
     
     // 不需要返回true，因为已经同步响应

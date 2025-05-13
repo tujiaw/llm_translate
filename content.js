@@ -10,10 +10,11 @@
     };
     
     // 动态导入模块
-    const [uiModule, messagingModule, utilsModule] = await Promise.all([
+    const [uiModule, messagingModule, utilsModule, webpageTranslatorModule] = await Promise.all([
       import(getModuleUrl('ui.js')),
       import(getModuleUrl('messaging.js')),
-      import(getModuleUrl('utils.js'))
+      import(getModuleUrl('utils.js')),
+      import(getModuleUrl('webpage_translator.js'))
     ]).catch(error => {
       console.error('导入模块时出错:', error);
       throw error;
@@ -22,6 +23,7 @@
     const UiService = uiModule.default;
     const MessagingService = messagingModule.default;
     const Utils = utilsModule.default;
+    const WebpageTranslator = webpageTranslatorModule.default;
     
     // 全局变量
     let selectedText = '';
@@ -59,6 +61,17 @@
           const x = window.innerWidth / 2;
           const y = window.innerHeight / 3;
           showLoadingPopup(x, y);
+        } else if (request.action === "translateWebpage") {
+          console.log('接收到全网页翻译请求');
+          // 执行全网页翻译
+          WebpageTranslator.translateWebpage()
+            .catch(error => console.error('执行全网页翻译时出错:', error));
+          return { success: true };
+        } else if (request.action === "clearWebpageTranslations") {
+          console.log('接收到清除翻译请求');
+          // 清除所有翻译标签
+          WebpageTranslator.clearTranslations();
+          return { success: true };
         }
       });
     }
