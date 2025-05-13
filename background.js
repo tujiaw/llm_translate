@@ -23,32 +23,10 @@ createContextMenus();
 function createContextMenus() {
   // 确保先移除所有已有菜单，避免重复
   chrome.contextMenus.removeAll(() => {
-    // 创建网页翻译父菜单
+    // 创建网页翻译菜单项
     chrome.contextMenus.create({
-      id: 'translateWebpageParent',
-      title: '网页翻译',
-      contexts: ['page', 'frame']
-    });
-    
-    // 创建不同翻译模式的子菜单
-    chrome.contextMenus.create({
-      id: 'translateWebpage_visible-first',
-      parentId: 'translateWebpageParent',
-      title: '可视区域优先翻译',
-      contexts: ['page', 'frame']
-    });
-    
-    chrome.contextMenus.create({
-      id: 'translateWebpage_standard',
-      parentId: 'translateWebpageParent',
-      title: '标准翻译（全文）',
-      contexts: ['page', 'frame']
-    });
-    
-    chrome.contextMenus.create({
-      id: 'translateWebpage_lazy',
-      parentId: 'translateWebpageParent',
-      title: '延迟加载翻译（滚动时）',
+      id: 'translateWebpage',
+      title: '翻译当前网页',
       contexts: ['page', 'frame']
     });
     
@@ -61,10 +39,8 @@ function createContextMenus() {
 
     // 设置菜单点击事件监听
     chrome.contextMenus.onClicked.addListener((info, tab) => {
-      if (info.menuItemId.startsWith('translateWebpage_')) {
-        // 提取模式
-        const mode = info.menuItemId.split('_')[1];
-        handleWebpageTranslation(tab, mode);
+      if (info.menuItemId === 'translateWebpage') {
+        handleWebpageTranslation(tab);
       } else if (info.menuItemId === 'clearTranslations') {
         handleClearTranslations(tab);
       }
@@ -77,20 +53,18 @@ function createContextMenus() {
 /**
  * 处理网页翻译请求
  * @param {Object} tab - 当前标签页对象
- * @param {string} mode - 翻译模式
  */
-function handleWebpageTranslation(tab, mode = 'visible-first') {
+function handleWebpageTranslation(tab) {
   if (!tab || !tab.id) {
     console.error('无法获取当前标签页信息');
     return;
   }
 
-  console.log(`开始翻译网页 (${mode}模式):`, tab.url);
+  console.log('开始翻译网页');
 
   // 向内容脚本发送翻译网页的消息
   chrome.tabs.sendMessage(tab.id, { 
-    action: "translateWebpage",
-    mode: mode
+    action: "translateWebpage"
   }, (response) => {
     // 检查是否发生错误
     if (chrome.runtime.lastError) {
