@@ -96,26 +96,57 @@ textarea {
 
 .controls {
   display: flex;
-  justify-content: center;
+  justify-content: flex-end;
   align-items: center;
-  margin-bottom: 8px;
-  gap: 8px;
+  margin-bottom: 0;
+  margin-left: 10px;
+  gap: 4px;
 }
 
-#translateBtn {
+.controls button {
   background-color: #4CAF50;
   color: white;
   border: none;
-  padding: 6px 12px;
+  padding: 6px 10px;
   border-radius: 4px;
   cursor: pointer;
-  font-weight: bold;
+  font-weight: 500;
   transition: background-color 0.3s;
-  font-size: 13px;
+  font-size: 12px;
+  min-width: 45px;
 }
 
-#translateBtn:hover {
+.controls button:hover {
   background-color: #45a049;
+}
+
+.controls button.clear-btn {
+  background-color: #f44336;
+}
+
+.controls button.clear-btn:hover {
+  background-color: #e53935;
+}
+
+/* 添加工具提示样式 */
+[title] {
+  position: relative;
+}
+
+[title]:hover::after {
+  content: attr(title);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 8px;
+  background-color: rgba(0, 0, 0, 0.8);
+  color: white;
+  font-size: 12px;
+  border-radius: 4px;
+  white-space: nowrap;
+  z-index: 1000;
+  margin-bottom: 5px;
 }
 
 .result-container {
@@ -304,58 +335,4 @@ optgroup {
   display: none;
 }
 
-/* 为全网页翻译区域添加样式 */
-.webpage-translation {
-  margin-top: 20px;
-  border-top: 1px solid #e0e0e0;
-  padding-top: 15px;
-}
-
-.webpage-translation h3 {
-  font-size: 16px;
-  margin: 0 0 10px 0;
-  color: #333;
-}
-
-.webpage-buttons {
-  display: flex;
-  gap: 10px;
-}
-
-.webpage-buttons button {
-  flex: 1;
-  padding: 8px 10px;
-  background-color: #4CAF50;
-  color: white;
-  border: none;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: background-color 0.2s;
-}
-
-.webpage-buttons button:hover {
-  background-color: #45a049;
-}
-
-.webpage-buttons button:active {
-  background-color: #3d8b40;
-}
-
-.webpage-buttons button:disabled {
-  background-color: #cccccc;
-  cursor: not-allowed;
-}
-
-/* 清除翻译按钮样式 */
-#clearTranslationsBtn {
-  background-color: #f44336;
-}
-
-#clearTranslationsBtn:hover {
-  background-color: #e53935;
-}
-
-#clearTranslationsBtn:active {
-  background-color: #d32f2f;
-} 
+ 

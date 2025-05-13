@@ -861,10 +861,25 @@ Do not add any explanation or additional content.`;
       const sortedNodes = this.sortNodesByVisibility(allNodeInfoArray);
       
       // 分批次翻译
-      const batchSize = 60; // 每批节点数量
+      const maxCallCount = 10; // 最大API调用次数
+      const minBatchSize = 60; // 最小批次大小
+      const maxBatchSize = 100; // 最大批次大小
+      let batchSize = minBatchSize;
       let translatedCount = 0;
+      let callCount = 0;
+      
+      // 根据节点总数和最大调用次数动态调整批次大小
+      if (sortedNodes.length > minBatchSize * maxCallCount) {
+        batchSize = Math.min(maxBatchSize, Math.floor(sortedNodes.length / maxCallCount));
+      }
       
       for (let i = 0; i < sortedNodes.length; i += batchSize) {
+        callCount++;
+        if (callCount > maxCallCount) {
+          this.showTranslationComplete('API调用次数已达上限', true);
+          return;
+        }
+
         // 获取当前批次的节点
         const batchNodes = sortedNodes.slice(i, i + batchSize);
         

@@ -18,7 +18,9 @@
           </select>
         </div>
         <div class="controls">
-          <button id="translateBtn">Translate</button>
+          <button id="translateBtn" title="Translate selected text">Text</button>
+          <button id="translateWebpageBtn" title="Translate current webpage">Page</button>
+          <button id="clearTranslationsBtn" title="Clear webpage translations" class="clear-btn">Clear</button>
         </div>
       </div>
       
@@ -27,15 +29,6 @@
         <div class="result-container">
           <textarea id="outputText" placeholder="Translation result..." readonly></textarea>
           <div class="spinner" id="loadingSpinner"></div>
-        </div>
-      </div>
-      
-      <!-- 全网页翻译区域 -->
-      <div class="webpage-translation">
-        <h3>Webpage Translation</h3>
-        <div class="webpage-buttons">
-          <button id="translateWebpageBtn">Translate Current Page</button>
-          <button id="clearTranslationsBtn">Clear Translations</button>
         </div>
       </div>
     </div>
