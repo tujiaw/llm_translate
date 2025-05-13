@@ -14,6 +14,15 @@ class WebpageTranslatorService {
   static getTranslatableNodes() {
     const excludeTags = ['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'HEAD', 'META', 'TITLE', 'LINK'];
     const excludeClasses = ['llm-translation-label', 'llm-translate-button', 'llm-translation-popup'];
+    // 代码相关的类名
+    const codeClasses = [
+      'code', 'codeblock', 'highlight', 'syntax', 'hljs', 'prism', 'prettyprint', 'sourceCode', 
+      'language-', 'token', 'gist', 'codehilite', 'wp-block-code', 'brush:', 'sh_', 'snippet',
+      'CodeMirror', 'monaco-editor', 'ace_editor', 'syntaxhighlighter', 'SyntaxHighlighter'
+    ];
+    
+    // 代码容器的标识符
+    const codeContainers = ['PRE', 'CODE', 'SAMP', 'KBD'];
     const translateNodes = [];
     
     // 遍历文档中的所有文本节点
@@ -43,10 +52,139 @@ class WebpageTranslatorService {
             return NodeFilter.FILTER_REJECT;
           }
           
+          // 排除代码块
+          // 1. 检查是否在<pre>、<code>等代码容器标签内
+          let ancestor = parent;
+          while (ancestor) {
+            if (codeContainers.includes(ancestor.nodeName)) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            
+            // 2. 检查是否有代码相关类名
+            if (ancestor.classList) {
+              for (const cls of codeClasses) {
+                if (Array.from(ancestor.classList).some(className => className.includes(cls))) {
+                  return NodeFilter.FILTER_REJECT;
+                }
+              }
+            }
+            
+            // 3. 检查自定义data属性表示代码
+            if (ancestor.dataset && 
+               (ancestor.dataset.code != null || 
+                ancestor.dataset.language != null || 
+                ancestor.dataset.syntax != null)) {
+              return NodeFilter.FILTER_REJECT;
+            }
+            
+            ancestor = ancestor.parentElement;
+          }
+          
+          // 4. 检查文本是否像代码（基于启发式规则）
+          if (isProbablyCode(text)) {
+            return NodeFilter.FILTER_REJECT;
+          }
+          
           return NodeFilter.FILTER_ACCEPT;
         }
       }
     );
+    
+    /**
+     * 基于启发式规则判断文本是否可能是代码
+     * @param {string} text - 要检查的文本
+     * @returns {boolean} 是否可能是代码
+     */
+    function isProbablyCode(text) {
+      // 如果文本很短但明显是自然语言，跳过代码检测
+      const naturalLanguagePhrases = [
+        /^(Note|Warning|Caution|Important|Info|Tip):/i,
+        /^(Step|Chapter|Section)\s+\d+/i,
+        /^(Figure|Table|Chart)\s+\d+/i,
+        /^(See|Read)\s+(also|more):/i
+      ];
+      
+      if (naturalLanguagePhrases.some(pattern => pattern.test(text))) {
+        return false;
+      }
+      
+      // 如果文本很短且包含特定符号，可能是行内代码
+      if (text.length < 50) {
+        // 检查是否被反引号包围（Markdown行内代码）
+        if (/^`[^`]+`$/.test(text)) {
+          return true;
+        }
+        
+        // 检查是否是shell命令
+        if (/^\s*[$#>]\s+[\w./-]+/.test(text)) {
+          return true;
+        }
+      }
+      
+      // 如果文本包含markdown代码块标记，则认为是代码
+      if (/^```[a-z]*\s*$/im.test(text) || /^~~~[a-z]*\s*$/im.test(text)) {
+        return true;
+      }
+      
+      // 常见代码特征
+      const codePatterns = [
+        // 函数定义/调用
+        /function\s+\w+\s*\(/i,
+        // 变量声明
+        /(var|let|const)\s+\w+\s*=/i,
+        // 类定义
+        /class\s+\w+(\s+extends\s+\w+)?\s*\{/i,
+        // 常见编程语言关键字组合
+        /(if|for|while|switch|return|case)\s*\([^)]*\)/i,
+        // HTML标签
+        /<\/?[a-z][a-z0-9]*(?:\s+[a-z0-9-]+(?:=(?:"[^"]*"|'[^']*'|[^>\s]+))?)*\s*\/?>/i,
+        // CSS规则
+        /[\.\#]?[a-z0-9_-]+\s*\{[^}]*\}/i,
+        // JSON格式或对象字面量
+        /\{\s*"[^"]+"\s*:\s*["0-9\[\{]/i,
+        // 常见代码缩进模式
+        /^(\s{2,}|\t+)[a-z0-9_$.]+/im,
+        // 编程语言特有符号组合
+        /[;{}]\s*(\/\/.*)?$/m,
+        // Import/Export语句
+        /(import|export)(\s+\{[^}]+\}\s+from|\s+[a-z0-9_$]+\s+from)/i,
+        // 命令行提示符
+        /^\s*[#$>]\s+\w+/m,
+        // 多行赋值
+        /[a-z0-9_$]+\s*=\s*[a-z0-9_$]+/i,
+        // 常见编程语言注释
+        /\/\/\s*.*$|\/\*[\s\S]*?\*\/|#\s.*$/m,
+        // API路径或URL参数
+        /\/api\/v[0-9]+\/[a-z0-9\/]+(\?[\w%&=]+)?/i,
+        // 常见的编程语言语法
+        /\w+\s*\.\s*\w+\s*\(\s*.*\s*\)/,
+        // SQL查询片段
+        /SELECT\s+.+\s+FROM\s+.+/i
+      ];
+      
+      // 检查是否包含代码模式
+      const codePatternMatches = codePatterns.filter(pattern => pattern.test(text)).length;
+      // 对较短文本，只需匹配一个模式即可
+      if (text.length < 100 && codePatternMatches >= 1) {
+        return true;
+      }
+      // 对较长文本，需要匹配更多模式
+      if (codePatternMatches >= 2) {
+        return true;
+      }
+      
+      // 检查特殊符号比例
+      const codeSymbols = text.match(/[{}\[\]()<>:;=!+\-*/%&|^~?]|\.\.\./g) || [];
+      const textLength = text.length;
+      const symbolRatio = codeSymbols.length / textLength;
+      
+      // 调整特殊符号比例阈值，根据文本长度
+      if (textLength < 30) {
+        return symbolRatio > 0.15;
+      }
+      
+      return symbolRatio > 0.1;  // 如果特殊符号比例过高，可能是代码
+    }
     
     // 收集符合条件的节点
     let node;
@@ -723,7 +861,7 @@ Do not add any explanation or additional content.`;
       const sortedNodes = this.sortNodesByVisibility(allNodeInfoArray);
       
       // 分批次翻译
-      const batchSize = 30; // 每批节点数量
+      const batchSize = 60; // 每批节点数量
       let translatedCount = 0;
       
       for (let i = 0; i < sortedNodes.length; i += batchSize) {
