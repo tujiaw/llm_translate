@@ -14,6 +14,94 @@ initializeConfig();
 // 设置消息监听
 setupMessageListeners();
 
+// 创建右键菜单
+createContextMenus();
+
+/**
+ * 创建浏览器右键菜单
+ */
+function createContextMenus() {
+  // 确保先移除所有已有菜单，避免重复
+  chrome.contextMenus.removeAll(() => {
+    // 创建网页翻译菜单项
+    chrome.contextMenus.create({
+      id: 'translateWebpage',
+      title: '翻译当前网页',
+      contexts: ['page', 'frame']
+    });
+    
+    // 创建清除翻译菜单项
+    chrome.contextMenus.create({
+      id: 'clearTranslations',
+      title: '清除页面翻译',
+      contexts: ['page', 'frame']
+    });
+
+    // 设置菜单点击事件监听
+    chrome.contextMenus.onClicked.addListener((info, tab) => {
+      if (info.menuItemId === 'translateWebpage') {
+        handleWebpageTranslation(tab);
+      } else if (info.menuItemId === 'clearTranslations') {
+        handleClearTranslations(tab);
+      }
+    });
+
+    console.log('已创建右键菜单');
+  });
+}
+
+/**
+ * 处理网页翻译请求
+ * @param {Object} tab - 当前标签页对象
+ */
+function handleWebpageTranslation(tab) {
+  if (!tab || !tab.id) {
+    console.error('无法获取当前标签页信息');
+    return;
+  }
+
+  console.log('开始翻译网页:', tab.url);
+
+  // 向内容脚本发送翻译网页的消息
+  chrome.tabs.sendMessage(tab.id, { 
+    action: "translateWebpage" 
+  }, (response) => {
+    // 检查是否发生错误
+    if (chrome.runtime.lastError) {
+      console.error('发送翻译网页消息时出错:', chrome.runtime.lastError);
+      return;
+    }
+
+    console.log('网页翻译请求已发送，响应:', response);
+  });
+}
+
+/**
+ * 处理清除翻译请求
+ * @param {Object} tab - 当前标签页对象
+ */
+function handleClearTranslations(tab) {
+  if (!tab || !tab.id) {
+    console.error('无法获取当前标签页信息');
+    return;
+  }
+
+  console.log('清除页面翻译:', tab.url);
+
+  // 向内容脚本发送清除翻译的消息
+  chrome.tabs.sendMessage(tab.id, { 
+    action: "clearWebpageTranslations" 
+  }, (response) => {
+    // 检查是否发生错误
+    if (chrome.runtime.lastError) {
+      console.error('发送清除翻译消息时出错:', chrome.runtime.lastError);
+      return;
+    }
+
+    console.log('清除翻译请求已发送，响应:', response);
+  });
+}
+
 /**
  * 记录配置信息的通用函数
  * @param {Object} config - 配置对象

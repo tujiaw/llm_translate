@@ -5,7 +5,8 @@
   "description": "Multilingual translation extension using free LLM APIs",
   "permissions": [
     "storage", 
-    "activeTab"
+    "activeTab",
+    "contextMenus"
   ],
   "host_permissions": [
     "https://api.siliconflow.cn/*",
