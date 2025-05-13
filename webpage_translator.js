@@ -16,8 +16,8 @@ class WebpageTranslatorService {
     const excludeClasses = ['llm-translation-label', 'llm-translate-button', 'llm-translation-popup'];
     // 代码相关的类名
     const codeClasses = [
-      'code', 'codeblock', 'highlight', 'syntax', 'hljs', 'prism', 'prettyprint', 'sourceCode', 
-      'language-', 'token', 'gist', 'codehilite', 'wp-block-code', 'brush:', 'sh_', 'snippet',
+      'codeblock', 'hljs', 'prism', 'prettyprint', 'sourceCode', 
+      'codehilite', 'wp-block-code', 'brush:', 'sh_',
       'CodeMirror', 'monaco-editor', 'ace_editor', 'syntaxhighlighter', 'SyntaxHighlighter'
     ];
     
@@ -238,7 +238,7 @@ Do not add any explanation or additional content.`;
       } else if (config.modelDefinitions && config.modelDefinitions[config.currentModel]) {
         modelInfo = config.modelDefinitions[config.currentModel];
       } else {
-        throw new Error(`无法找到模型信息: ${config.currentModel || '未指定模型'}`);
+        throw new Error(`Model information not found: ${config.currentModel || 'Model not specified'}`);
       }
       
       // 构建查询文本 - 文本列表，每行一条
@@ -250,7 +250,7 @@ Do not add any explanation or additional content.`;
       const modelName = modelInfo.name;
       const modelProvider = modelInfo.provider || modelType;
 
-      console.log(`准备批量翻译请求: 模型=${modelName}, 类型=${modelType}, 提供商=${modelProvider}`);
+      console.log(`Preparing batch translation request: model=${modelName}, type=${modelType}, provider=${modelProvider}`);
       
       let requestBody;
       switch (modelType) {
@@ -314,7 +314,7 @@ Do not add any explanation or additional content.`;
         this.showTranslationComplete(errorMessage, true);
         return nodeItems.map(item => ({ 
           id: item.id, 
-          translation: `[请在设置中配置${modelProvider}的API密钥]` 
+          translation: `[Please configure ${modelProvider} API key in settings]` 
         }));
       }
       
@@ -329,7 +329,7 @@ Do not add any explanation or additional content.`;
       
       // 根据提供商添加认证头
       if (apiKey) {
-        console.log(`为${modelProvider}提供商添加认证头`);
+        console.log(`Adding authentication header for ${modelProvider}`);
         switch (modelProvider) {
           case 'openai':
             apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
@@ -375,11 +375,11 @@ Do not add any explanation or additional content.`;
             apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
         }
       } else {
-        console.log(`未配置API密钥，但模型标记为不需要密钥`);
+        console.log(`No API key configured, but model marked as not requiring key`);
       }
       
       // 发送API请求
-      console.log(`发送批量翻译请求到: ${apiEndpoint}`);
+      console.log(`Sending batch translation request to: ${apiEndpoint}`);
       const response = await fetch(apiEndpoint, apiOptions);
       
       if (!response.ok) {
@@ -390,28 +390,28 @@ Do not add any explanation or additional content.`;
           
           // 针对常见错误提供更友好的提示
           if (response.status === 401) {
-            let friendlyError = `认证失败: API密钥可能无效或未正确配置。请在扩展设置中检查${modelProvider}的API密钥。`;
+            let friendlyError = `Authentication failed: API key may be invalid or not properly configured. Please check ${modelProvider} API key in extension settings.`;
             console.error(friendlyError);
             this.showTranslationComplete(friendlyError, true);
             return nodeItems.map(item => ({ 
               id: item.id, 
-              translation: `[API认证失败: 请检查${modelProvider}的API密钥]` 
+              translation: `[API Authentication failed: Please check ${modelProvider} API key]` 
             }));
           } else if (response.status === 403) {
-            let friendlyError = `访问被拒绝: 您的API密钥可能没有权限访问此资源。请确认API密钥正确且有效。`;
+            let friendlyError = `Access denied: Your API key may not have permission to access this resource. Please ensure the API key is correct and valid.`;
             console.error(friendlyError);
             this.showTranslationComplete(friendlyError, true);
             return nodeItems.map(item => ({ 
               id: item.id, 
-              translation: `[API权限错误: 请检查${modelProvider}的API密钥权限]` 
+              translation: `[API Authentication failed: Please check ${modelProvider} API key]` 
             }));
           } else if (response.status === 429) {
-            let friendlyError = `请求过多: API调用次数已达上限。请稍后再试。`;
+            let friendlyError = `Too many requests: API call limit reached. Please try again later.`;
             console.error(friendlyError);
             this.showTranslationComplete(friendlyError, true);
             return nodeItems.map(item => ({ 
               id: item.id, 
-              translation: `[API调用次数已达上限]` 
+              translation: `[API call limit reached]` 
             }));
           }
         } catch (e) {
@@ -471,7 +471,7 @@ Do not add any explanation or additional content.`;
           const translation = parts.slice(1).join(':::').trim();
           translationResults.push({ id, translation });
         } else {
-          console.warn('无法解析翻译行:', line);
+          console.warn('Cannot parse translation line:', line);
         }
       }
       
@@ -482,7 +482,7 @@ Do not add any explanation or additional content.`;
       // 添加缺失的翻译
       for (const nodeItem of nodeItems) {
         if (!translatedIds.has(nodeItem.id)) {
-          console.warn(`未找到ID为${nodeItem.id}的翻译结果，使用占位符`);
+          console.warn(`Translation not found for ID ${nodeItem.id}, using placeholder`);
           translationResults.push({
             id: nodeItem.id,
             translation: '[Translation Error]'
@@ -492,7 +492,7 @@ Do not add any explanation or additional content.`;
       
       return translationResults;
     } catch (error) {
-      console.error('批量翻译错误:', error);
+      console.error('Batch translation error:', error);
       // 返回错误信息数组
       return nodeItems.map(item => ({
         id: item.id,
@@ -523,7 +523,7 @@ Do not add any explanation or additional content.`;
       const translation = translationMap.get(nodeInfo.id);
       
       if (!translation) {
-        console.warn(`未找到ID为${nodeInfo.id}的翻译结果`);
+        console.warn(`Translation not found for ID ${nodeInfo.id}`);
         continue;
       }
       
@@ -556,7 +556,7 @@ Do not add any explanation or additional content.`;
         // 插入到原文本之后
         parent.insertBefore(translationLabel, nodeInfo.node.nextSibling);
       } catch (error) {
-        console.error('显示翻译时出错:', error, nodeInfo);
+        console.error('Error displaying translation:', error, nodeInfo);
       }
     }
   }
@@ -605,7 +605,7 @@ Do not add any explanation or additional content.`;
       statusBox.innerHTML = `
         <div style="display: flex; align-items: center;">
           <div style="width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.1); border-radius: 50%; border-top: 2px solid #4CAF50; animation: llm-translate-spin 1s linear infinite; margin-right: 10px;"></div>
-          <span>正在翻译网页... ${percent}% (${current}/${total})</span>
+          <span>Translating webpage... ${percent}% (${current}/${total})</span>
         </div>
       `;
     }
@@ -621,7 +621,7 @@ Do not add any explanation or additional content.`;
         chrome.runtime.sendMessage({ action: 'getConfig' }, (response) => {
           // 处理没有响应的情况
           if (chrome.runtime.lastError) {
-            console.error('获取配置时出错:', chrome.runtime.lastError);
+            console.error('Error getting configuration:', chrome.runtime.lastError);
             // 使用默认配置继续
             resolve({});
             return;
@@ -629,7 +629,7 @@ Do not add any explanation or additional content.`;
           
           // 处理响应为空的情况
           if (!response) {
-            console.warn('获取配置响应为空，使用默认配置');
+            console.warn('Configuration response is empty, using default configuration');
             resolve({});
             return;
           }
@@ -639,7 +639,7 @@ Do not add any explanation or additional content.`;
         });
       });
     } catch (configError) {
-      console.error('获取配置异常:', configError);
+      console.error('Configuration exception:', configError);
       // 出现异常也使用默认配置继续
       return {};
     }
@@ -742,7 +742,7 @@ Do not add any explanation or additional content.`;
     // 加载中动画
     statusBox.innerHTML = `
       <div style="width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.1); border-radius: 50%; border-top: 2px solid #4CAF50; animation: llm-translate-spin 1s linear infinite; margin-right: 10px;"></div>
-      <span>正在翻译网页...</span>
+      <span>Translating webpage...</span>
     `;
     
     // 添加动画样式(如果尚未添加)
@@ -847,7 +847,7 @@ Do not add any explanation or additional content.`;
       const allNodeInfoArray = this.getTranslatableNodes();
       
       if (allNodeInfoArray.length === 0) {
-        this.showTranslationComplete('未找到可翻译的文本内容');
+        this.showTranslationComplete('No translatable text content found');
         return;
       }
       
@@ -876,7 +876,7 @@ Do not add any explanation or additional content.`;
       for (let i = 0; i < sortedNodes.length; i += batchSize) {
         callCount++;
         if (callCount > maxCallCount) {
-          this.showTranslationComplete('API调用次数已达上限', true);
+          this.showTranslationComplete('API call limit reached', true);
           return;
         }
 
@@ -901,10 +901,10 @@ Do not add any explanation or additional content.`;
       }
       
       // 显示完成提示
-      this.showTranslationComplete(`已翻译 ${translatedCount} 个文本片段`);
+      this.showTranslationComplete(`Translated ${translatedCount} text segments`);
     } catch (error) {
-      console.error('网页翻译失败:', error);
-      this.showTranslationComplete(`翻译失败: ${error.message}`, true);
+      console.error('Webpage translation failed:', error);
+      this.showTranslationComplete(`Translation failed: ${error.message}`, true);
     }
   }
 }
