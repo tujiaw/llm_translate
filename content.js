@@ -62,9 +62,10 @@
           const y = window.innerHeight / 3;
           showLoadingPopup(x, y);
         } else if (request.action === "translateWebpage") {
-          console.log('接收到全网页翻译请求');
-          // 执行全网页翻译
-          WebpageTranslator.translateWebpage()
+          console.log('接收到全网页翻译请求，模式:', request.mode);
+          // 执行全网页翻译，使用指定的模式
+          const mode = request.mode || 'visible-first';
+          WebpageTranslator.translateWebpage(mode)
             .catch(error => console.error('执行全网页翻译时出错:', error));
           return { success: true };
         } else if (request.action === "clearWebpageTranslations") {

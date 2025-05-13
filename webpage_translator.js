@@ -424,65 +424,251 @@ Do not add any explanation or additional content.`;
   }
   
   /**
-   * 执行全网页翻译
+   * 使用延迟加载翻译网页
+   * 只翻译当前可见区域，在滚动时翻译新出现的内容
    * @returns {Promise<void>}
    */
-  static async translateWebpage() {
+  static async translateWithLazyLoading() {
     try {
+      // 全局变量跟踪翻译状态
+      window._llmTranslationState = {
+        translatedNodeIds: new Set(),
+        isTranslating: false,
+        config: null,
+        scrollHandler: null
+      };
+      
       // 显示翻译中提示
       this.showTranslationInProgress();
       
-      // 获取可翻译节点
-      const nodeInfoArray = this.getTranslatableNodes();
+      // 加载配置
+      const config = await this.loadConfig();
+      window._llmTranslationState.config = this.ensureCompleteConfig(config);
       
-      if (nodeInfoArray.length === 0) {
-        this.showTranslationComplete('未找到可翻译的文本内容');
+      // 首次翻译可见区域
+      await this.translateVisibleContent();
+      
+      // 添加滚动事件监听器
+      const scrollHandler = Utils.debounce(() => {
+        this.translateVisibleContent();
+      }, 200);
+      
+      window._llmTranslationState.scrollHandler = scrollHandler;
+      window.addEventListener('scroll', scrollHandler);
+      
+      // 更新状态提示
+      this.showTranslationComplete('已翻译可见区域，滚动页面继续翻译');
+      
+      // 创建停止翻译的浮动按钮
+      this.createStopTranslationButton();
+    } catch (error) {
+      console.error('延迟加载翻译失败:', error);
+      this.showTranslationComplete(`翻译失败: ${error.message}`, true);
+      this.cleanupLazyLoadingState();
+    }
+  }
+  
+  /**
+   * 翻译当前可见区域的内容
+   * @returns {Promise<void>}
+   */
+  static async translateVisibleContent() {
+    // 防止重复翻译
+    if (window._llmTranslationState.isTranslating) {
+      return;
+    }
+    
+    try {
+      window._llmTranslationState.isTranslating = true;
+      
+      // 获取所有可翻译节点
+      const allNodes = this.getTranslatableNodes();
+      
+      // 过滤出未翻译的可见节点
+      const visibleUntranslatedNodes = allNodes.filter(nodeInfo => {
+        // 跳过已翻译的节点
+        if (window._llmTranslationState.translatedNodeIds.has(nodeInfo.id)) {
+          return false;
+        }
+        
+        // 检查是否在视口内
+        const rect = nodeInfo.node.parentElement.getBoundingClientRect();
+        return rect.top < window.innerHeight + 200 && // 包括视口下方200px
+               rect.bottom > -200 && // 包括视口上方200px
+               rect.left < window.innerWidth && 
+               rect.right > 0;
+      });
+      
+      if (visibleUntranslatedNodes.length === 0) {
+        window._llmTranslationState.isTranslating = false;
         return;
       }
       
-      // 加载配置 - 修复错误处理
-      let config = {};
-      try {
-        config = await new Promise((resolve, reject) => {
-          chrome.runtime.sendMessage({ action: 'getConfig' }, (response) => {
-            // 处理没有响应的情况
-            if (chrome.runtime.lastError) {
-              console.error('获取配置时出错:', chrome.runtime.lastError);
-              // 使用默认配置继续
-              resolve({});
-              return;
-            }
-            
-            // 处理响应为空的情况
-            if (!response) {
-              console.warn('获取配置响应为空，使用默认配置');
-              resolve({});
-              return;
-            }
-            
-            // 正常情况
-            resolve(response.config || {});
-          });
-        });
-      } catch (configError) {
-        console.error('获取配置异常:', configError);
-        // 出现异常也使用默认配置继续
-      }
-      
-      // 确保配置完整性
-      config = this.ensureCompleteConfig(config);
-      
-      // 批量翻译文本
-      const translationResults = await this.batchTranslate(nodeInfoArray, config);
+      // 批量翻译可见区域内容
+      const translationResults = await this.batchTranslate(
+        visibleUntranslatedNodes, 
+        window._llmTranslationState.config
+      );
       
       // 显示翻译结果
-      this.displayTranslations(nodeInfoArray, translationResults);
+      this.displayTranslations(visibleUntranslatedNodes, translationResults);
       
-      // 显示完成提示
-      this.showTranslationComplete(`已翻译 ${translationResults.length} 个文本片段`);
+      // 记录已翻译节点ID
+      for (const node of visibleUntranslatedNodes) {
+        window._llmTranslationState.translatedNodeIds.add(node.id);
+      }
+      
+      // 更新状态
+      this.updateLazyLoadStatus();
     } catch (error) {
-      console.error('网页翻译失败:', error);
-      this.showTranslationComplete(`翻译失败: ${error.message}`, true);
+      console.error('翻译可见内容失败:', error);
+    } finally {
+      window._llmTranslationState.isTranslating = false;
+    }
+  }
+  
+  /**
+   * 更新延迟加载状态提示
+   */
+  static updateLazyLoadStatus() {
+    let statusBox = document.getElementById('llm-translation-status');
+    if (statusBox) {
+      statusBox.innerHTML = `
+        <div style="display: flex; align-items: center;">
+          <span>已翻译 ${window._llmTranslationState.translatedNodeIds.size} 个文本片段</span>
+        </div>
+      `;
+    }
+  }
+  
+  /**
+   * 创建停止翻译的浮动按钮
+   */
+  static createStopTranslationButton() {
+    const stopButton = document.createElement('div');
+    stopButton.id = 'llm-stop-translation-button';
+    stopButton.textContent = '停止翻译';
+    stopButton.style.cssText = `
+      position: fixed;
+      bottom: 20px;
+      right: 20px;
+      background-color: #f44336;
+      color: white;
+      padding: 8px 16px;
+      border-radius: 4px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+      cursor: pointer;
+      font-family: Arial, sans-serif;
+      font-size: 14px;
+      z-index: 10002;
+    `;
+    
+    stopButton.addEventListener('click', () => {
+      this.cleanupLazyLoadingState();
+      document.body.removeChild(stopButton);
+      this.showTranslationComplete('已停止翻译');
+    });
+    
+    document.body.appendChild(stopButton);
+  }
+  
+  /**
+   * 清理延迟加载翻译的状态
+   */
+  static cleanupLazyLoadingState() {
+    if (window._llmTranslationState && window._llmTranslationState.scrollHandler) {
+      window.removeEventListener('scroll', window._llmTranslationState.scrollHandler);
+    }
+    
+    const stopButton = document.getElementById('llm-stop-translation-button');
+    if (stopButton && document.body.contains(stopButton)) {
+      document.body.removeChild(stopButton);
+    }
+    
+    window._llmTranslationState = null;
+  }
+  
+  /**
+   * 根据节点在视口中的可见性排序
+   * @param {Array<{node: Node, text: string, id: string}>} nodes - 节点数组
+   * @returns {Array<{node: Node, text: string, id: string}>} 排序后的节点数组
+   */
+  static sortNodesByVisibility(nodes) {
+    // 获取视口信息
+    const viewportHeight = window.innerHeight;
+    const viewportWidth = window.innerWidth;
+    const scrollTop = window.scrollY;
+    const scrollBottom = scrollTop + viewportHeight;
+    
+    // 计算每个节点的优先级
+    return [...nodes].sort((a, b) => {
+      const rectA = a.node.parentElement.getBoundingClientRect();
+      const rectB = b.node.parentElement.getBoundingClientRect();
+      
+      // 检查是否在视口内
+      const aInViewport = rectA.top < viewportHeight && rectA.bottom > 0 && 
+                          rectA.left < viewportWidth && rectA.right > 0;
+      const bInViewport = rectB.top < viewportHeight && rectB.bottom > 0 && 
+                          rectB.left < viewportWidth && rectB.right > 0;
+      
+      // 首先按是否在视口内排序
+      if (aInViewport && !bInViewport) return -1;
+      if (!aInViewport && bInViewport) return 1;
+      
+      // 然后按与视口顶部的距离排序
+      return Math.abs(rectA.top) - Math.abs(rectB.top);
+    });
+  }
+  
+  /**
+   * 更新翻译进度提示
+   * @param {number} current - 当前进度
+   * @param {number} total - 总数量
+   */
+  static updateTranslationProgress(current, total) {
+    let statusBox = document.getElementById('llm-translation-status');
+    if (statusBox) {
+      const percent = Math.round((current / total) * 100);
+      statusBox.innerHTML = `
+        <div style="display: flex; align-items: center;">
+          <div style="width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.1); border-radius: 50%; border-top: 2px solid #4CAF50; animation: llm-translate-spin 1s linear infinite; margin-right: 10px;"></div>
+          <span>正在翻译网页... ${percent}% (${current}/${total})</span>
+        </div>
+      `;
+    }
+  }
+  
+  /**
+   * 加载配置
+   * @returns {Promise<Object>} 配置对象
+   */
+  static async loadConfig() {
+    try {
+      return await new Promise((resolve, reject) => {
+        chrome.runtime.sendMessage({ action: 'getConfig' }, (response) => {
+          // 处理没有响应的情况
+          if (chrome.runtime.lastError) {
+            console.error('获取配置时出错:', chrome.runtime.lastError);
+            // 使用默认配置继续
+            resolve({});
+            return;
+          }
+          
+          // 处理响应为空的情况
+          if (!response) {
+            console.warn('获取配置响应为空，使用默认配置');
+            resolve({});
+            return;
+          }
+          
+          // 正常情况
+          resolve(response.config || {});
+        });
+      });
+    } catch (configError) {
+      console.error('获取配置异常:', configError);
+      // 出现异常也使用默认配置继续
+      return {};
     }
   }
   
@@ -672,6 +858,144 @@ Do not add any explanation or additional content.`;
     const statusBox = document.getElementById('llm-translation-status');
     if (statusBox && document.body.contains(statusBox)) {
       document.body.removeChild(statusBox);
+    }
+  }
+  
+  /**
+   * 按可视区域优先级进行翻译
+   * @returns {Promise<void>}
+   */
+  static async translateVisibleAreaFirst() {
+    try {
+      // 显示翻译中提示
+      this.showTranslationInProgress();
+      
+      // 获取所有可翻译节点
+      const allNodeInfoArray = this.getTranslatableNodes();
+      
+      if (allNodeInfoArray.length === 0) {
+        this.showTranslationComplete('未找到可翻译的文本内容');
+        return;
+      }
+      
+      // 加载配置
+      let config = await this.loadConfig();
+      
+      // 确保配置完整性
+      config = this.ensureCompleteConfig(config);
+      
+      // 将节点按可视区域排序
+      const sortedNodes = this.sortNodesByVisibility(allNodeInfoArray);
+      
+      // 分批次翻译
+      const batchSize = 30; // 每批节点数量
+      let translatedCount = 0;
+      
+      for (let i = 0; i < sortedNodes.length; i += batchSize) {
+        // 获取当前批次的节点
+        const batchNodes = sortedNodes.slice(i, i + batchSize);
+        
+        // 更新进度提示
+        this.updateTranslationProgress(i, sortedNodes.length);
+        
+        // 批量翻译
+        const translationResults = await this.batchTranslate(batchNodes, config);
+        
+        // 显示翻译结果
+        this.displayTranslations(batchNodes, translationResults);
+        
+        translatedCount += batchNodes.length;
+        
+        // 短暂延迟，避免API限流
+        if (i + batchSize < sortedNodes.length) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+      
+      // 显示完成提示
+      this.showTranslationComplete(`已翻译 ${translatedCount} 个文本片段`);
+    } catch (error) {
+      console.error('网页翻译失败:', error);
+      this.showTranslationComplete(`翻译失败: ${error.message}`, true);
+    }
+  }
+  
+  /**
+   * 执行全网页翻译
+   * @param {string} mode - 翻译模式: 'standard', 'visible-first', 'lazy'
+   * @returns {Promise<void>}
+   */
+  static async translateWebpage(mode = 'visible-first') {
+    // 根据模式选择不同的翻译方法
+    switch (mode) {
+      case 'lazy':
+        // 延迟加载模式 - 滚动时动态翻译
+        return this.translateWithLazyLoading();
+      
+      case 'visible-first':
+        // 可视区域优先模式 - 先翻译可见区域再翻译其他
+        return this.translateVisibleAreaFirst();
+      
+      case 'standard':
+      default:
+        // 标准模式 - 按文档顺序翻译所有内容
+        return this.translateStandard();
+    }
+  }
+  
+  /**
+   * 标准翻译模式 - 按文档顺序翻译全部内容
+   * @returns {Promise<void>}
+   */
+  static async translateStandard() {
+    try {
+      // 显示翻译中提示
+      this.showTranslationInProgress();
+      
+      // 获取可翻译节点
+      const nodeInfoArray = this.getTranslatableNodes();
+      
+      if (nodeInfoArray.length === 0) {
+        this.showTranslationComplete('未找到可翻译的文本内容');
+        return;
+      }
+      
+      // 加载配置
+      let config = await this.loadConfig();
+      
+      // 确保配置完整性
+      config = this.ensureCompleteConfig(config);
+      
+      // 分批次翻译以避免请求过大
+      const batchSize = 50;
+      let translatedCount = 0;
+      
+      for (let i = 0; i < nodeInfoArray.length; i += batchSize) {
+        // 获取当前批次的节点
+        const batchNodes = nodeInfoArray.slice(i, i + batchSize);
+        
+        // 更新进度提示
+        this.updateTranslationProgress(i, nodeInfoArray.length);
+        
+        // 批量翻译
+        const translationResults = await this.batchTranslate(batchNodes, config);
+        
+        // 显示翻译结果
+        this.displayTranslations(batchNodes, translationResults);
+        
+        translatedCount += batchNodes.length;
+        
+        // 短暂延迟，避免API限流
+        if (i + batchSize < nodeInfoArray.length) {
+          await new Promise(resolve => setTimeout(resolve, 300));
+        }
+      }
+      
+      // 显示完成提示
+      this.showTranslationComplete(`已翻译 ${translatedCount} 个文本片段`);
+    } catch (error) {
+      console.error('网页翻译失败:', error);
+      this.showTranslationComplete(`翻译失败: ${error.message}`, true);
     }
   }
 }
