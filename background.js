@@ -8,102 +8,69 @@ import Utils from './utils.js';
 
 console.log('LLM翻译扩展后台脚本已加载');
 
-// 初始化配置
-initializeConfig();
+// ==================== 常量定义 ====================
+const CONSTANTS = {
+  RETRY: {
+    MAX_ATTEMPTS: 3,
+    DELAY_MS: 1000
+  },
+  MENU_IDS: {
+    TRANSLATE_WEBPAGE: 'translateWebpage',
+    CLEAR_TRANSLATIONS: 'clearTranslations'
+  },
+  ACTIONS: {
+    TRANSLATE_WEBPAGE: 'translateWebpage',
+    CLEAR_WEBPAGE_TRANSLATIONS: 'clearWebpageTranslations',
+    PERFORM_TRANSLATION: 'performTranslation',
+    GET_CONFIG: 'getConfig',
+    TRANSLATE: 'translate'
+  },
+  ERROR_MESSAGES: {
+    CONNECTION_FAILED: ['Could not establish connection', 'Receiving end does not exist'],
+    SCRIPT_NOT_READY: ['Script not ready', 'Script not ready after waiting']
+  }
+};
 
-// 设置消息监听
-setupMessageListeners();
+// ==================== 初始化 ====================
+initializeExtension();
 
-// 创建右键菜单
-createContextMenus();
+function initializeExtension() {
+  initializeConfig();
+  setupMessageListeners();
+  createContextMenus();
+}
 
+// ==================== 配置管理 ====================
 /**
- * 创建浏览器右键菜单
+ * 初始化配置
  */
-function createContextMenus() {
-  // 确保先移除所有已有菜单，避免重复
-  chrome.contextMenus.removeAll(() => {
-    // 创建网页翻译菜单项
-    chrome.contextMenus.create({
-      id: 'translateWebpage',
-      title: '翻译当前网页',
-      contexts: ['page', 'frame']
-    });
+async function initializeConfig() {
+  try {
+    const config = await ConfigService.load();
+    logConfigInfo(config, '已加载');
     
-    // 创建清除翻译菜单项
-    chrome.contextMenus.create({
-      id: 'clearTranslations',
-      title: '清除页面翻译',
-      contexts: ['page', 'frame']
-    });
-
-    // 设置菜单点击事件监听
-    chrome.contextMenus.onClicked.addListener((info, tab) => {
-      if (info.menuItemId === 'translateWebpage') {
-        handleWebpageTranslation(tab);
-      } else if (info.menuItemId === 'clearTranslations') {
-        handleClearTranslations(tab);
-      }
-    });
-
-    console.log('已创建右键菜单');
-  });
-}
-
-/**
- * 处理网页翻译请求
- * @param {Object} tab - 当前标签页对象
- */
-function handleWebpageTranslation(tab) {
-  if (!tab || !tab.id) {
-    console.error('无法获取当前标签页信息');
-    return;
-  }
-
-  console.log('开始翻译网页');
-
-  // 向内容脚本发送翻译网页的消息
-  chrome.tabs.sendMessage(tab.id, { 
-    action: "translateWebpage"
-  }, (response) => {
-    // 检查是否发生错误
-    if (chrome.runtime.lastError) {
-      console.error('发送翻译网页消息时出错:', chrome.runtime.lastError);
-      return;
+    if (!isConfigComplete(config)) {
+      console.log('配置不完整，重置为默认值');
+      ConfigService.reset();
+    } else {
+      console.log('已有完整配置，无需设置默认值');
     }
-
-    console.log('网页翻译请求已发送，响应:', response);
-  });
-}
-
-/**
- * 处理清除翻译请求
- * @param {Object} tab - 当前标签页对象
- */
-function handleClearTranslations(tab) {
-  if (!tab || !tab.id) {
-    console.error('无法获取当前标签页信息');
-    return;
+  } catch (error) {
+    console.error('初始化配置时出错:', error);
   }
-
-  console.log('清除页面翻译:', tab.url);
-
-  // 向内容脚本发送清除翻译的消息
-  chrome.tabs.sendMessage(tab.id, { 
-    action: "clearWebpageTranslations" 
-  }, (response) => {
-    // 检查是否发生错误
-    if (chrome.runtime.lastError) {
-      console.error('发送清除翻译消息时出错:', chrome.runtime.lastError);
-      return;
-    }
-
-    console.log('清除翻译请求已发送，响应:', response);
-  });
 }
 
 /**
- * 记录配置信息的通用函数
+ * 检查配置是否完整
+ * @param {Object} config - 配置对象
+ * @returns {boolean} - 配置是否完整
+ */
+function isConfigComplete(config) {
+  return config.modelDefinitions && Object.keys(config.modelDefinitions).length > 0;
+}
+
+/**
+ * 记录配置信息
  * @param {Object} config - 配置对象
  * @param {string} prefix - 日志前缀
  */
@@ -113,14 +80,255 @@ function logConfigInfo(config, prefix = '') {
     hasModelDefinitions: Boolean(config.modelDefinitions),
     modelDefinitionsCount: config.modelDefinitions ? Object.keys(config.modelDefinitions).length : 0,
     hasApiKeys: Boolean(config.apiKeys),
-    apiKeysSiliconFlow: Boolean(config.apiKeys && config.apiKeys['silicon-flow']),
-    apiKeysZhipu: Boolean(config.apiKeys && config.apiKeys['zhipu']),
-    customModelEnabled: Boolean(config.customModel && config.customModel.enabled)
+    apiKeysSiliconFlow: Boolean(config.apiKeys?.['silicon-flow']),
+    apiKeysZhipu: Boolean(config.apiKeys?.['zhipu']),
+    customModelEnabled: Boolean(config.customModel?.enabled)
   }));
 }
 
+// ==================== 右键菜单管理 ====================
 /**
- * 向标签页发送消息的通用函数
+ * 创建浏览器右键菜单
+ */
+function createContextMenus() {
+  chrome.contextMenus.removeAll(() => {
+    const menuItems = [
+      {
+        id: CONSTANTS.MENU_IDS.TRANSLATE_WEBPAGE,
+        title: '翻译当前网页',
+        contexts: ['page', 'frame']
+      },
+      {
+        id: CONSTANTS.MENU_IDS.CLEAR_TRANSLATIONS,
+        title: '清除页面翻译',
+        contexts: ['page', 'frame']
+      }
+    ];
+
+    menuItems.forEach(item => chrome.contextMenus.create(item));
+    
+    chrome.contextMenus.onClicked.addListener(handleContextMenuClick);
+    console.log('已创建右键菜单');
+  });
+}
+
+/**
+ * 处理右键菜单点击事件
+ * @param {Object} info - 菜单信息
+ * @param {Object} tab - 当前标签页对象
+ */
+function handleContextMenuClick(info, tab) {
+  if (!isValidTab(tab)) {
+    console.error('无法获取当前标签页信息');
+    return;
+  }
+
+  const menuHandlers = {
+    [CONSTANTS.MENU_IDS.TRANSLATE_WEBPAGE]: () => handleWebpageTranslation(tab),
+    [CONSTANTS.MENU_IDS.CLEAR_TRANSLATIONS]: () => handleClearTranslations(tab)
+  };
+
+  const handler = menuHandlers[info.menuItemId];
+  if (handler) {
+    handler();
+  }
+}
+
+/**
+ * 验证标签页是否有效
+ * @param {Object} tab - 标签页对象
+ * @returns {boolean} - 是否有效
+ */
+function isValidTab(tab) {
+  return tab && tab.id;
+}
+
+// ==================== 网页翻译处理 ====================
+/**
+ * 处理网页翻译请求
+ * @param {Object} tab - 当前标签页对象
+ */
+function handleWebpageTranslation(tab) {
+  console.log('开始翻译网页');
+  sendMessageWithRetry(tab.id, { action: CONSTANTS.ACTIONS.TRANSLATE_WEBPAGE }, '翻译网页');
+}
+
+/**
+ * 处理清除翻译请求
+ * @param {Object} tab - 当前标签页对象
+ */
+function handleClearTranslations(tab) {
+  console.log('清除页面翻译:', tab.url);
+  sendMessageWithRetry(tab.id, { action: CONSTANTS.ACTIONS.CLEAR_WEBPAGE_TRANSLATIONS }, '清除翻译');
+}
+
+// ==================== 通用消息发送系统 ====================
+/**
+ * 发送消息并支持重试机制
+ * @param {number} tabId - 标签页ID
+ * @param {Object} message - 要发送的消息
+ * @param {string} operationName - 操作名称（用于日志）
+ * @param {number} retryCount - 当前重试次数
+ */
+function sendMessageWithRetry(tabId, message, operationName, retryCount = 0) {
+  chrome.tabs.sendMessage(tabId, message, (response) => {
+    const error = chrome.runtime.lastError;
+    
+    if (error) {
+      handleMessageError(error, tabId, message, operationName, retryCount);
+      return;
+    }
+
+    if (isResponseFailure(response)) {
+      handleResponseFailure(response, tabId, message, operationName, retryCount);
+      return;
+    }
+
+    console.log(`${operationName}请求成功，响应:`, response);
+  });
+}
+
+/**
+ * 处理消息发送错误
+ * @param {Object} error - Chrome runtime 错误
+ * @param {number} tabId - 标签页ID
+ * @param {Object} message - 原始消息
+ * @param {string} operationName - 操作名称
+ * @param {number} retryCount - 重试次数
+ */
+function handleMessageError(error, tabId, message, operationName, retryCount) {
+  console.error(`发送${operationName}消息时出错 (尝试 ${retryCount + 1}/${CONSTANTS.RETRY.MAX_ATTEMPTS + 1}):`, error);
+  
+  if (shouldRetry(error.message, retryCount)) {
+    scheduleRetry(() => {
+      sendMessageWithRetry(tabId, message, operationName, retryCount + 1);
+    }, retryCount);
+  } else {
+    console.error(`${operationName}请求最终失败`);
+  }
+}
+
+/**
+ * 处理响应失败
+ * @param {Object} response - 响应对象
+ * @param {number} tabId - 标签页ID
+ * @param {Object} message - 原始消息
+ * @param {string} operationName - 操作名称
+ * @param {number} retryCount - 重试次数
+ */
+function handleResponseFailure(response, tabId, message, operationName, retryCount) {
+  if (isScriptNotReady(response)) {
+    console.log('内容脚本尚未完全就绪，进行重试');
+    if (retryCount < CONSTANTS.RETRY.MAX_ATTEMPTS) {
+      scheduleRetry(() => {
+        sendMessageWithRetry(tabId, message, operationName, retryCount + 1);
+      }, retryCount);
+    } else {
+      console.error(`内容脚本长时间未就绪，${operationName}请求失败`);
+    }
+  } else {
+    console.error(`${operationName}执行失败:`, response.error || response.message);
+  }
+}
+
+/**
+ * 判断是否应该重试
+ * @param {string} errorMessage - 错误消息
+ * @param {number} retryCount - 当前重试次数
+ * @returns {boolean} - 是否应该重试
+ */
+function shouldRetry(errorMessage, retryCount) {
+  return retryCount < CONSTANTS.RETRY.MAX_ATTEMPTS && 
+         CONSTANTS.ERROR_MESSAGES.CONNECTION_FAILED.some(msg => errorMessage.includes(msg));
+}
+
+/**
+ * 检查响应是否为失败状态
+ * @param {Object} response - 响应对象
+ * @returns {boolean} - 是否为失败状态
+ */
+function isResponseFailure(response) {
+  return response && response.success === false;
+}
+
+/**
+ * 检查脚本是否未就绪
+ * @param {Object} response - 响应对象
+ * @returns {boolean} - 脚本是否未就绪
+ */
+function isScriptNotReady(response) {
+  return response.message && 
+         CONSTANTS.ERROR_MESSAGES.SCRIPT_NOT_READY.some(msg => response.message.includes(msg));
+}
+
+/**
+ * 安排重试操作
+ * @param {Function} retryFunction - 重试函数
+ * @param {number} retryCount - 当前重试次数
+ */
+function scheduleRetry(retryFunction, retryCount) {
+  console.log(`内容脚本可能尚未加载完成，${CONSTANTS.RETRY.DELAY_MS}ms后进行第${retryCount + 2}次尝试`);
+  setTimeout(retryFunction, CONSTANTS.RETRY.DELAY_MS);
+}
+
+// ==================== 消息监听系统 ====================
+/**
+ * 设置消息监听器
+ */
+function setupMessageListeners() {
+  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+    console.log('接收到消息:', request);
+    
+    const messageHandlers = {
+      [CONSTANTS.ACTIONS.PERFORM_TRANSLATION]: () => handlePerformTranslation(request, sender, sendResponse),
+      [CONSTANTS.ACTIONS.GET_CONFIG]: () => handleGetConfig(sendResponse)
+    };
+
+    const handler = messageHandlers[request.action];
+    if (handler) {
+      return handler();
+    }
+  });
+}
+
+/**
+ * 处理执行翻译消息
+ * @param {Object} request - 请求对象
+ * @param {Object} sender - 发送者信息
+ * @param {Function} sendResponse - 响应函数
+ */
+function handlePerformTranslation(request, sender, sendResponse) {
+  const tabId = sender.tab?.id;
+  console.log('消息请求翻译，文本:', request.text, '标签ID:', tabId);
+  
+  sendResponse({ status: 'translating' });
+  performTranslation(request.text, tabId);
+}
+
+/**
+ * 处理获取配置消息
+ * @param {Function} sendResponse - 响应函数
+ * @returns {boolean} - 是否异步响应
+ */
+function handleGetConfig(sendResponse) {
+  console.log('收到获取配置请求');
+  
+  ConfigService.load()
+    .then(config => {
+      console.log('已加载配置并准备返回');
+      sendResponse({ config });
+    })
+    .catch(error => {
+      console.error('加载配置时出错:', error);
+      sendResponse({ error: error.message });
+    });
+  
+  return true; // 异步响应
+}
+
+// ==================== 翻译系统 ====================
+/**
+ * 向标签页发送消息
  * @param {number} tabId - 标签页ID
  * @param {string} action - 操作类型
  * @param {string} text - 原始文本
@@ -129,12 +337,7 @@ function logConfigInfo(config, prefix = '') {
  */
 function sendMessageToTab(tabId, action, text, result, isError = false) {
   if (tabId) {
-    chrome.tabs.sendMessage(tabId, { 
-      action, 
-      text, 
-      result,
-      isError // 添加错误状态标识
-    });
+    chrome.tabs.sendMessage(tabId, { action, text, result, isError });
     console.log(`已发送${action}消息到标签页:`, tabId, isError ? '(错误)' : '');
   }
 }
@@ -149,117 +352,43 @@ function sendMessageToTab(tabId, action, text, result, isError = false) {
 function handleTranslationError(error, context, tabId, text) {
   console.error(`${context}:`, error);
   if (tabId) {
-    sendMessageToTab(tabId, "translate", text, `${context}: ${error.message}`, true);
+    sendMessageToTab(tabId, CONSTANTS.ACTIONS.TRANSLATE, text, `${context}: ${error.message}`, true);
   }
-}
-
-/**
- * 初始化配置
- */
-function initializeConfig() {
-  try {
-    // 获取当前配置
-    ConfigService.load().then(config => {
-      logConfigInfo(config, '已加载');
-      
-      // 检查配置完整性
-      if (!config.modelDefinitions || Object.keys(config.modelDefinitions).length === 0) {
-        console.log('配置不完整，重置为默认值');
-        ConfigService.reset();
-      } else {
-        console.log('已有完整配置，无需设置默认值');
-      }
-    });
-  } catch (error) {
-    console.error('初始化配置时出错:', error);
-  }
-}
-
-/**
- * 设置消息监听器
- */
-function setupMessageListeners() {
-  // 监听来自弹出窗口或内容脚本的消息
-  chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
-    console.log('接收到消息:', request);
-    
-    if (request.action === "performTranslation") {
-      const tabId = sender.tab ? sender.tab.id : null;
-      console.log('消息请求翻译，文本:', request.text, '标签ID:', tabId);
-      
-      // 立即返回确认消息，避免等待异步操作
-      sendResponse({ status: 'translating' });
-      
-      // 异步执行翻译，不影响消息响应
-      performTranslation(request.text, tabId);
-    } else if (request.action === "getConfig") {
-      // 处理获取配置的请求
-      console.log('收到获取配置请求');
-      
-      // 由于ConfigService.load是异步的，需要特殊处理
-      ConfigService.load().then(config => {
-        console.log('已加载配置并准备返回');
-        sendResponse({ config: config });
-      }).catch(error => {
-        console.error('加载配置时出错:', error);
-        sendResponse({ error: error.message });
-      });
-      
-      // 返回true表示将使用异步响应
-      return true;
-    }
-    
-    // 不需要返回true，因为已经同步响应
-  });
 }
 
 /**
  * 获取模型信息
  * @param {Object} config - 配置对象
- * @param {string} text - 要翻译的文本
- * @param {number} tabId - 标签页ID
  * @returns {Object|null} - 模型信息或null（出错时）
  */
-function getModelInfo(config, text, tabId) {
-  try {
-    if (config.currentModel === 'custom' && config.customModel && config.customModel.enabled) {
-      return config.customModel;
-    } else if (config.modelDefinitions && config.modelDefinitions[config.currentModel]) {
-      return config.modelDefinitions[config.currentModel];
-    } else {
-      throw new Error(`未找到模型信息: ${config.currentModel || '未指定模型'}`);
-    }
-  } catch (error) {
-    handleTranslationError(error, '获取模型信息时出错', tabId, text);
-    return null;
+function getModelInfo(config) {
+  if (config.currentModel === 'custom' && config.customModel?.enabled) {
+    return config.customModel;
   }
+  
+  if (config.modelDefinitions?.[config.currentModel]) {
+    return config.modelDefinitions[config.currentModel];
+  }
+  
+  throw new Error(`未找到模型信息: ${config.currentModel || '未指定模型'}`);
 }
 
 /**
  * 获取API密钥
  * @param {string} modelType - 模型类型
  * @param {Object} config - 配置对象
- * @param {string} text - 要翻译的文本
- * @param {number} tabId - 标签页ID
  * @returns {string|null} - API密钥或null（未找到时）
  */
-function getApiKey(modelType, config, text, tabId) {
-  let apiKey;
-  
-  if (modelType === 'custom' && config.customModel && config.customModel.apiKey) {
-    apiKey = config.customModel.apiKey;
-  } else if (config.apiKeys && config.apiKeys[modelType]) {
-    apiKey = config.apiKeys[modelType];
+function getApiKey(modelType, config) {
+  if (modelType === 'custom' && config.customModel?.apiKey) {
+    return config.customModel.apiKey;
   }
   
-  if (!apiKey) {
-    console.log(`错误: ${modelType} 的API密钥未设置`);
-    sendMessageToTab(tabId, "translate", text, 
-      `Please configure API key in extension settings first.\n\n请先在扩展设置中配置 ${modelType} 的API密钥。`, true);
-    return null;
+  if (config.apiKeys?.[modelType]) {
+    return config.apiKeys[modelType];
   }
   
-  return apiKey;
+  return null;
 }
 
 /**
@@ -267,44 +396,35 @@ function getApiKey(modelType, config, text, tabId) {
  * @param {string} text - 要翻译的文本
  * @param {number} tabId - 标签页ID
  */
-function performTranslation(text, tabId) {
+async function performTranslation(text, tabId) {
   console.log('执行翻译操作，文本:', text, '标签ID:', tabId);
   
-  if (!text || text.trim() === '') {
+  if (!text?.trim()) {
     console.log('文本为空，取消翻译');
     return;
   }
   
-  // 加载配置
-  ConfigService.load().then(config => {
+  try {
+    const config = await ConfigService.load();
     logConfigInfo(config, '翻译请求加载的');
     
-    // 获取当前模型信息
-    const modelInfo = getModelInfo(config, text, tabId);
-    if (!modelInfo) return;
-    
-    // 检查API密钥
+    const modelInfo = getModelInfo(config);
     const modelType = modelInfo.type;
-    const apiKey = getApiKey(modelType, config, text, tabId);
-    if (!apiKey) return;
+    const apiKey = getApiKey(modelType, config);
     
-    // 使用翻译服务
-    try {
-      console.log(`开始翻译，模型类型: ${modelType}, 模型名称: ${modelInfo.name}`);
-      
-      // 使用TranslatorService进行翻译
-      TranslatorService.translate(text)
-        .then(translatedText => {
-          console.log('翻译成功:', translatedText);
-          sendMessageToTab(tabId, "translate", text, translatedText, false);
-        })
-        .catch(error => {
-          handleTranslationError(error, '翻译过程中出错', tabId, text);
-        });
-    } catch (error) {
-      handleTranslationError(error, '准备翻译请求时出错', tabId, text);
+    if (!apiKey) {
+      const errorMessage = `Please configure API key in extension settings first.\n\n请先在扩展设置中配置 ${modelType} 的API密钥。`;
+      sendMessageToTab(tabId, CONSTANTS.ACTIONS.TRANSLATE, text, errorMessage, true);
+      return;
     }
-  }).catch(error => {
-    handleTranslationError(error, '加载配置时出错', tabId, text);
-  });
+    
+    console.log(`开始翻译，模型类型: ${modelType}, 模型名称: ${modelInfo.name}`);
+    
+    const translatedText = await TranslatorService.translate(text);
+    console.log('翻译成功:', translatedText);
+    sendMessageToTab(tabId, CONSTANTS.ACTIONS.TRANSLATE, text, translatedText, false);
+    
+  } catch (error) {
+    handleTranslationError(error, '翻译过程中出错', tabId, text);
+  }
 } 

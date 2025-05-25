@@ -1,4 +1,7 @@
 // content.js - 内容脚本
+// 脚本就绪状态标记
+let scriptReady = false;
+
 // 使用动态导入获取模块
 (async function() {
   try {
@@ -42,38 +45,90 @@
     // 设置文本选择监听器
     setupTextSelectionListener();
     
+    // 标记脚本已就绪
+    scriptReady = true;
+    console.log('内容脚本已完全就绪');
+    
     /**
      * 设置消息监听器
      */
     function setupMessageListeners() {
-      MessagingService.registerMessageListener((request, sender) => {
+      MessagingService.registerMessageListener(async (request, sender) => {
         console.log('内容脚本收到消息:', request);
         
+        // 检查脚本是否就绪，如果未就绪则等待
+        if (!scriptReady) {
+          console.warn('内容脚本尚未完全就绪，等待就绪...');
+          // 等待脚本就绪，最多等待2秒
+          const maxWaitTime = 2000;
+          const checkInterval = 50;
+          let waitedTime = 0;
+          
+          while (!scriptReady && waitedTime < maxWaitTime) {
+            await new Promise(resolve => setTimeout(resolve, checkInterval));
+            waitedTime += checkInterval;
+          }
+          
+          if (!scriptReady) {
+            console.error('内容脚本长时间未就绪，消息处理失败');
+            return { success: false, message: 'Script not ready after waiting' };
+          }
+          
+          console.log('内容脚本已就绪，继续处理消息');
+        }
+        
+        return await handleMessage(request, sender);
+      });
+    }
+    
+    /**
+     * 处理接收到的消息
+     */
+    async function handleMessage(request, sender) {
+      try {
         if (request.action === "getSelectedText") {
           console.log('发送选中文本:', selectedText);
           return { selectedText: selectedText };
         } else if (request.action === "translate") {
           console.log('收到翻译结果:', request.result, '是否错误:', request.isError);
           handleTranslation(request.text, request.result, request.isError);
+          return { success: true };
         } else if (request.action === "showLoadingPopup") {
           console.log('显示加载弹窗');
           // 获取当前鼠标位置
           const x = window.innerWidth / 2;
           const y = window.innerHeight / 3;
           showLoadingPopup(x, y);
+          return { success: true };
         } else if (request.action === "translateWebpage") {
           console.log('接收到全网页翻译请求');
-          // 执行全网页翻译
-          WebpageTranslator.translateWebpage()
-            .catch(error => console.error('执行全网页翻译时出错:', error));
-          return { success: true };
+          // 执行全网页翻译，等待完成
+          try {
+            await WebpageTranslator.translateWebpage();
+            console.log('全网页翻译已完成');
+            return { success: true };
+          } catch (error) {
+            console.error('执行全网页翻译时出错:', error);
+            return { success: false, error: error.message };
+          }
         } else if (request.action === "clearWebpageTranslations") {
           console.log('接收到清除翻译请求');
           // 清除所有翻译标签
-          WebpageTranslator.clearTranslations();
-          return { success: true };
+          try {
+            WebpageTranslator.clearTranslations();
+            console.log('清除翻译已完成');
+            return { success: true };
+          } catch (error) {
+            console.error('清除翻译时出错:', error);
+            return { success: false, error: error.message };
+          }
         }
-      });
+        
+        return { success: false, error: 'Unknown action' };
+      } catch (error) {
+        console.error('处理消息时出错:', error);
+        return { success: false, error: error.message };
+      }
     }
     
     /**
