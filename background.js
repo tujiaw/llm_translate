@@ -37,7 +37,7 @@ initializeExtension();
 function initializeExtension() {
   initializeConfig();
   setupMessageListeners();
-  createContextMenus();
+  // createContextMenus();
 }
 
 // ==================== 配置管理 ====================

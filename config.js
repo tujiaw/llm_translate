@@ -10,6 +10,22 @@ const DEFAULT_CONFIG = {
   // Native language setting
   nativeLanguage: 'zh',
   
+  // 模型分组配置
+  modelGroups: {
+    'silicon-flow': {
+      label: 'SiliconFlow Free Models',
+      order: 1
+    },
+    'zhipu': {
+      label: 'ZhipuAI Free Models',
+      order: 2
+    },
+    'custom': {
+      label: 'Custom',
+      order: 3
+    }
+  },
+  
   // 模型定义列表
   modelDefinitions: {
     // 免费模型

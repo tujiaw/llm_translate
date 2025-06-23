@@ -105,6 +105,9 @@ class UiService {
     popup.style.left = `${x}px`;
     popup.style.top = `${y}px`;
     
+    // 添加拖拽功能
+    UiService.makePopupDraggable(popup);
+    
     return popup;
   }
 
@@ -190,12 +193,15 @@ class UiService {
     popup.appendChild(original);
     popup.appendChild(result);
     
-    // 自动复制翻译结果到剪贴板
-    try {
-      await this.copyToClipboard(translatedText);
-    } catch (error) {
-      console.error('Failed to copy translation to clipboard:', error);
-    }
+    // // 自动复制翻译结果到剪贴板
+    // try {
+    //   await this.copyToClipboard(translatedText);
+    // } catch (error) {
+    //   console.error('Failed to copy translation to clipboard:', error);
+    // }
+    
+    // 确保拖拽功能依然存在
+    UiService.makePopupDraggable(popup);
     
     return popup;
   }
@@ -243,6 +249,9 @@ class UiService {
     // 添加到弹窗
     popup.appendChild(original);
     popup.appendChild(result);
+    
+    // 确保拖拽功能依然存在
+    UiService.makePopupDraggable(popup);
     
     return popup;
   }
@@ -297,6 +306,77 @@ class UiService {
     }, duration);
     
     return notification;
+  }
+
+  /**
+   * 使弹窗可拖拽（在弹窗顶部中间添加40*25的拖动区域）
+   * @param {HTMLElement} popup - 弹窗元素
+   */
+  static makePopupDraggable(popup) {
+    if (!popup) {
+      return;
+    }
+
+    // 如果已经存在拖拽区域，直接返回，避免重复添加
+    if (popup.querySelector('.llm-drag-area')) {
+      return;
+    }
+
+    // 创建拖动区域
+    const dragArea = document.createElement('div');
+    dragArea.className = 'llm-drag-area';
+
+    // 基础样式：位置在顶部中间，大小40*25，鼠标样式为move
+    dragArea.textContent = '⋯';
+    dragArea.style.position = 'absolute';
+    dragArea.style.top = '0';
+    dragArea.style.left = '50%';
+    dragArea.style.transform = 'translateX(-50%)';
+    dragArea.style.width = '40px';
+    dragArea.style.height = '25px';
+    dragArea.style.cursor = 'move';
+    dragArea.style.userSelect = 'none';
+    // 可选：给一个轻微透明背景，方便用户看到拖动区域
+    dragArea.style.backgroundColor = 'rgba(0,0,0,0)';
+
+    // 文本水平居中，垂直顶部对齐
+    dragArea.style.display = 'flex';
+    dragArea.style.justifyContent = 'center'; // 水平居中
+    dragArea.style.alignItems = 'flex-start'; // 垂直顶部
+
+    // 将拖动区域插入到弹窗中（置于最上层）
+    popup.appendChild(dragArea);
+
+    let isDragging = false;
+    let offsetX = 0;
+    let offsetY = 0;
+
+    // 统一获取包含滚动偏移的页内坐标
+    const getPageX = (evt) => evt.pageX || (evt.clientX + window.scrollX);
+    const getPageY = (evt) => evt.pageY || (evt.clientY + window.scrollY);
+
+    const onMouseMove = (e) => {
+      if (!isDragging) return;
+      popup.style.left = `${getPageX(e) - offsetX}px`;
+      popup.style.top = `${getPageY(e) - offsetY}px`;
+    };
+
+    const onMouseUp = () => {
+      isDragging = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    dragArea.addEventListener('mousedown', (e) => {
+      if (e.button !== 0) return; // 仅响应左键
+      isDragging = true;
+      // 记录指针到弹窗左上角的偏移，使用包含滚动值的坐标，避免页面有滚动时产生跳动
+      offsetX = getPageX(e) - popup.offsetLeft;
+      offsetY = getPageY(e) - popup.offsetTop;
+
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    });
   }
 }
 

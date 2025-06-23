@@ -51,7 +51,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         showZhipuKeyBtn: document.getElementById('showZhipuKeyBtn'),
         showCustomKeyBtn: document.getElementById('showCustomKeyBtn'),
         loadingSpinner: document.getElementById('loadingSpinner'),
-        apiKeyLinks: document.querySelectorAll('.api-key a')
+        apiKeyLinks: document.querySelectorAll('.api-key a'),
+        modelSectionHeader: document.getElementById('modelSectionHeader'),
+        modelSectionContent: document.getElementById('modelSectionContent')
       };
     }
     
@@ -83,6 +85,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         // 首先填充母语选择下拉框，提高用户体验
         populateLanguageSelect(elements.nativeLanguage);
         
+        // 动态填充模型选择下拉框
+        populateModelSelect(elements.modelSelect, config);
+        
         // 设置当前选择的母语
         if (config.nativeLanguage) {
           elements.nativeLanguage.value = config.nativeLanguage;
@@ -106,7 +111,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
         
         // 根据当前选择的模型类型更新UI
-        updateUiForSelectedModel(elements, config.currentModel);
+        await updateUiForSelectedModel(elements, config.currentModel);
       } catch (error) {
         console.error('Error loading settings:', error);
         UiService.showNotification('Error loading settings: ' + error.message, 'error');
@@ -132,6 +137,81 @@ document.addEventListener('DOMContentLoaded', async function() {
         selectElement.appendChild(option);
       });
     }
+    
+    /**
+     * 动态填充模型选择下拉框
+     * @param {HTMLSelectElement} selectElement - 选择框元素
+     * @param {object} config - 配置对象
+     */
+    function populateModelSelect(selectElement, config) {
+      // 清空现有选项
+      selectElement.innerHTML = '';
+      
+      // 检查是否有模型定义
+      if (!config.modelDefinitions || Object.keys(config.modelDefinitions).length === 0) {
+        console.warn('配置中没有可用的模型定义');
+        return;
+      }
+      
+      // 按类型分组模型，使用配置中的分组标签
+      const modelGroups = {};
+      
+      // 从配置中获取分组信息
+      if (config.modelGroups) {
+        Object.entries(config.modelGroups).forEach(([groupType, groupInfo]) => {
+          modelGroups[groupType] = {
+            label: groupInfo.label,
+            order: groupInfo.order || 999,
+            models: []
+          };
+        });
+      } else {
+        // 如果配置中没有分组信息，使用默认分组
+        modelGroups['silicon-flow'] = { label: 'SiliconFlow Free Models', order: 1, models: [] };
+        modelGroups['zhipu'] = { label: 'ZhipuAI Free Models', order: 2, models: [] };
+        modelGroups['custom'] = { label: 'Custom', order: 3, models: [] };
+      }
+      
+      // 分类模型到对应的组
+      Object.entries(config.modelDefinitions).forEach(([modelId, modelInfo]) => {
+        if (modelInfo.type && modelGroups[modelInfo.type]) {
+          modelGroups[modelInfo.type].models.push({
+            id: modelId,
+            name: modelInfo.name
+          });
+        }
+      });
+      
+      // 按顺序为每个有模型的组创建optgroup
+      const sortedGroups = Object.entries(modelGroups)
+        .filter(([groupType, group]) => group.models.length > 0 || groupType === 'custom')
+        .sort((a, b) => a[1].order - b[1].order);
+        
+      sortedGroups.forEach(([groupType, group]) => {
+        const optgroup = document.createElement('optgroup');
+        optgroup.label = group.label;
+        
+        if (groupType === 'custom') {
+          // 添加自定义模型选项
+          const customOption = document.createElement('option');
+          customOption.value = 'custom';
+          customOption.textContent = 'Custom Model';
+          optgroup.appendChild(customOption);
+        } else {
+          // 添加该组的所有模型
+          group.models.forEach(model => {
+            const option = document.createElement('option');
+            option.value = model.id;
+            option.textContent = `${model.name} (${groupType})`;
+            optgroup.appendChild(option);
+          });
+        }
+        
+        selectElement.appendChild(optgroup);
+      });
+    }
+    
+
     
     /**
      * Set up event listeners
@@ -171,9 +251,9 @@ document.addEventListener('DOMContentLoaded', async function() {
       });
       
       // Model select change event
-      elements.modelSelect.addEventListener('change', () => {
+      elements.modelSelect.addEventListener('change', async () => {
         const selectedModel = elements.modelSelect.value;
-        updateUiForSelectedModel(elements, selectedModel);
+        await updateUiForSelectedModel(elements, selectedModel);
         
         // 自动保存设置
         saveSettings(elements);
@@ -194,14 +274,44 @@ document.addEventListener('DOMContentLoaded', async function() {
           chrome.tabs.create({ url: link.href });
         });
       });
+      
+      // 模型选择部分折叠功能
+      elements.modelSectionHeader.addEventListener('click', () => {
+        toggleCollapse(elements.modelSectionHeader, elements.modelSectionContent);
+      });
     }
     
+    /**
+     * 切换折叠状态
+     * @param {HTMLElement} headerElement - 标题元素
+     * @param {HTMLElement} contentElement - 内容元素
+     */
+    function toggleCollapse(headerElement, contentElement) {
+      const isExpanded = contentElement.classList.contains('expanded');
+      
+      if (isExpanded) {
+        // 收起
+        headerElement.classList.remove('expanded');
+        contentElement.classList.remove('expanded');
+        setTimeout(() => {
+          contentElement.classList.add('hidden');
+        }, 300);
+      } else {
+        // 展开
+        contentElement.classList.remove('hidden');
+        setTimeout(() => {
+          headerElement.classList.add('expanded');
+          contentElement.classList.add('expanded');
+        }, 10);
+      }
+    }
+
     /**
      * 根据选择的模型更新UI
      * @param {object} elements - DOM元素对象
      * @param {string} selectedModel - 选择的模型ID
      */
-    function updateUiForSelectedModel(elements, selectedModel) {
+    async function updateUiForSelectedModel(elements, selectedModel) {
       // 获取模型提供商类型
       let modelType;
       
@@ -213,11 +323,28 @@ document.addEventListener('DOMContentLoaded', async function() {
         // 隐藏自定义模型配置
         elements.customModelConfig.classList.add('hidden');
         
-        // 根据选择的模型获取模型类型
-        if (selectedModel.startsWith('glm-4-flash')) {
-          modelType = 'zhipu';
-        } else if (selectedModel.startsWith('glm-4') || selectedModel.startsWith('qwen')) {
-          modelType = 'silicon-flow';
+        // 从配置中动态获取模型类型
+        try {
+          const config = await ConfigService.load();
+          if (config.modelDefinitions && config.modelDefinitions[selectedModel]) {
+            modelType = config.modelDefinitions[selectedModel].type;
+          } else {
+            console.warn(`未找到模型 ${selectedModel} 的配置信息`);
+            // 如果配置中找不到，使用备用判断逻辑
+            if (selectedModel.startsWith('glm-4-flash')) {
+              modelType = 'zhipu';
+            } else if (selectedModel.startsWith('glm-4') || selectedModel.startsWith('qwen')) {
+              modelType = 'silicon-flow';
+            }
+          }
+        } catch (error) {
+          console.error('获取配置失败:', error);
+          // 如果加载配置失败，使用备用判断逻辑
+          if (selectedModel.startsWith('glm-4-flash')) {
+            modelType = 'zhipu';
+          } else if (selectedModel.startsWith('glm-4') || selectedModel.startsWith('qwen')) {
+            modelType = 'silicon-flow';
+          }
         }
       }
       
