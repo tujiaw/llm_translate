@@ -1,5 +1,6 @@
 // api.js - 处理所有LLM API调用
 import Utils from './utils.js';
+import ConfigService from './config.js';
 
 /**
  * API服务类 - 处理所有与LLM模型API相关的逻辑
@@ -21,59 +22,168 @@ class ApiService {
   }
 
   /**
-   * 根据模型类型和文本内容创建API请求配置
+   * 将「仅域名」或 OpenAI SDK 常用的 base（/ 或 /v1）补全为 Chat Completions 路径，避免 404。
+   * @param {string} rawUrl - 用户填写的 Base URL
+   * @returns {string}
+   */
+  static normalizeChatEndpoint(rawUrl) {
+    const trimmed = (rawUrl || '').trim();
+    if (!trimmed) {
+      return trimmed;
+    }
+    try {
+      const url = new URL(trimmed);
+      let path = url.pathname.replace(/\/+$/, '');
+      if (path === '') {
+        path = '/';
+      }
+
+      if (path === '/') {
+        url.pathname = '/v1/chat/completions';
+        return url.href.replace(/\/+$/, '');
+      }
+
+      if (path === '/v1') {
+        url.pathname = '/v1/chat/completions';
+        return url.href.replace(/\/+$/, '');
+      }
+
+      if (path === '/chat/completions') {
+        url.pathname = '/v1/chat/completions';
+        return url.href.replace(/\/+$/, '');
+      }
+
+      return trimmed.replace(/\/+$/, '');
+    } catch {
+      return trimmed;
+    }
+  }
+
+  /**
+   * @param {object} target - 目标对象
+   * @param {object} source - 源对象
+   * @returns {object}
+   */
+  static deepMerge(target, source) {
+    const base = target && typeof target === 'object' ? { ...target } : {};
+    if (!source || typeof source !== 'object' || Array.isArray(source)) {
+      return base;
+    }
+    const result = { ...base };
+    for (const key of Object.keys(source)) {
+      const sv = source[key];
+      const bv = result[key];
+      if (sv && typeof sv === 'object' && !Array.isArray(sv)) {
+        result[key] = this.deepMerge(bv && typeof bv === 'object' ? bv : {}, sv);
+      } else {
+        result[key] = sv;
+      }
+    }
+    return result;
+  }
+
+  /**
+   * 解析并校验当前模型条目
+   * @param {object} config - 配置信息
+   * @returns {object} 模型条目
+   */
+  static resolveCurrentModelEntry(config) {
+    const entry = ConfigService.getCurrentModel(config);
+    if (!entry) {
+      throw new Error('请先在扩展设置中添加并选择一个模型');
+    }
+    if (!(entry.baseUrl || '').trim()) {
+      throw new Error('当前模型缺少 Base URL');
+    }
+    if (!(entry.model || '').trim()) {
+      throw new Error('当前模型缺少 Model 名称');
+    }
+    if (!(entry.apiKey || '').trim()) {
+      throw new Error('当前模型缺少 API Key');
+    }
+    return entry;
+  }
+
+  /**
+   * 合并翻译请求体：OpenAI 兼容结构 + 用户自定义 JSON（messages 始终由扩展填充）
+   * @param {object} entry - 模型条目
+   * @param {string} systemPrompt - 系统提示
+   * @param {string} userContent - 用户内容
+   * @returns {object} requestBody
+   */
+  static mergeChatBody(entry, systemPrompt, userContent) {
+    const modelName = entry.model.trim();
+    const baseBody = {
+      model: modelName,
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userContent }
+      ],
+      temperature: 0.3
+    };
+
+    const raw = (entry.bodyJson || '').trim();
+    let extra = {};
+    if (raw) {
+      let parsed;
+      try {
+        parsed = JSON.parse(raw);
+      } catch (e) {
+        throw new Error(`自定义 Body JSON 解析失败: ${e.message}`);
+      }
+      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+        throw new Error('自定义 Body JSON 必须是 JSON 对象');
+      }
+      extra = parsed;
+    }
+
+    const merged = this.deepMerge(baseBody, extra);
+    merged.model = modelName;
+    merged.messages = baseBody.messages;
+    return merged;
+  }
+
+  /**
+   * 根据配置与文本内容创建API请求配置
    * @param {object} config - 配置信息
    * @param {string} text - 要翻译的文本
    * @param {boolean} isChineseQuery - 是否为中文查询
-   * @returns {object} 包含apiEndpoint和requestBody的配置对象
+   * @returns {object} 包含 apiEndpoint 与 requestBody
    */
   static async createRequestConfig(config, text, isChineseQuery) {
-    console.log('创建请求配置，输入配置:', JSON.stringify({
-      currentModel: config.currentModel,
-      hasApiKeys: Boolean(config.apiKeys),
-      hasCustomModel: Boolean(config.customModel),
-      modelDefinitions: Boolean(config.modelDefinitions),
+    console.log('创建请求配置', JSON.stringify({
+      currentModelId: config.currentModelId,
+      modelsCount: Array.isArray(config.models) ? config.models.length : 0,
       nativeLanguage: config.nativeLanguage
     }));
-    
-    // 获取用户母语，默认为中文
+
     const nativeLanguage = config.nativeLanguage || 'zh';
-    
-    // 获取源语言和目标语言
-    let sourceLang, targetLang, detectResult;
-    
-    // 使用Utils进行语言检测
+
+    let sourceLang;
+    let targetLang;
+    let detectResult;
+
     try {
-      // 直接使用静态导入的Utils
-      
-      // 获取语言检测结果
       detectResult = Utils.detectLanguage(text);
       console.log(`语言检测结果: 检测语言=${detectResult}, 用户母语=${nativeLanguage}`);
-      
-      // 改进的翻译逻辑：在检测到的语言和母语之间智能翻译
+
       if (detectResult === 'unknown') {
-        // 如果检测到未知语言，则使用简单的中英文检测
         if (isChineseQuery) {
           sourceLang = 'Chinese';
-          // 如果用户母语是中文，则翻译为英语；否则翻译为用户母语
           targetLang = (nativeLanguage === 'zh') ? 'English' : Utils.getLanguageNameInEnglish(nativeLanguage);
         } else {
           sourceLang = 'English';
-          // 默认翻译为用户母语
           targetLang = Utils.getLanguageNameInEnglish(nativeLanguage);
         }
       } else if (detectResult === nativeLanguage) {
-        // 如果检测到的语言与母语相同，默认翻译为英语
         sourceLang = Utils.getLanguageNameInEnglish(nativeLanguage);
         targetLang = 'English';
       } else {
-        // 检测到的语言不是母语，翻译为母语
         sourceLang = Utils.getLanguageNameInEnglish(detectResult);
         targetLang = Utils.getLanguageNameInEnglish(nativeLanguage);
       }
     } catch (error) {
       console.error('语言检测错误:', error);
-      // 回退到简单检测方式
       if (isChineseQuery) {
         sourceLang = 'Chinese';
         targetLang = (nativeLanguage === 'zh') ? 'English' : 'Chinese';
@@ -82,134 +192,47 @@ class ApiService {
         targetLang = (nativeLanguage === 'en') ? 'Chinese' : Utils.getLanguageNameInEnglish(nativeLanguage);
       }
     }
-    
+
     console.log(`语言检测结果: 源语言=${sourceLang}, 目标语言=${targetLang}`);
-    
+
     const systemPrompt = `You are a translation assistant. Please translate the following ${sourceLang} text into ${targetLang}, maintaining the original meaning, format, and tone. Output only the translation result without any explanation or additional content.`;
-    // 获取当前选择的模型信息
-    let modelInfo;
-    
-    try {
-      if (config.currentModel === 'custom' && config.customModel && config.customModel.enabled) {
-        modelInfo = config.customModel;
-        console.log('使用自定义模型:', modelInfo.name);
-      } else if (config.modelDefinitions && config.modelDefinitions[config.currentModel]) {
-        modelInfo = config.modelDefinitions[config.currentModel];
-        console.log('使用预定义模型:', modelInfo.name);
-      } else {
-        throw new Error(`无法找到模型信息: ${config.currentModel || '未指定模型'}`);
-      }
-    } catch (error) {
-      console.error('获取模型信息错误:', error);
-      throw error;
-    }
-    
-    if (!modelInfo) {
-      throw new Error(`未找到模型信息: ${config.currentModel || '未指定模型'}`);
-    }
-    
-    if (!modelInfo.apiEndpoint) {
-      throw new Error(`模型 ${modelInfo.name || config.currentModel} 缺少API端点配置`);
-    }
-    
-    if (!modelInfo.type) {
-      throw new Error(`模型 ${modelInfo.name || config.currentModel} 缺少类型配置`);
-    }
-    
-    const apiEndpoint = modelInfo.apiEndpoint;
-    const modelType = modelInfo.type;
-    const modelName = modelInfo.name;
-    
-    console.log(`准备请求: 类型=${modelType}, 端点=${apiEndpoint}, 模型=${modelName}`);
-    
-    let requestBody;
-    
-    // 根据模型类型创建请求体
-    switch (modelType) {
-      case 'silicon-flow':
-      case 'zhipu':
-      case 'gpt':
-        requestBody = {
-          model: modelName,
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: text }
-          ],
-          temperature: 0.3
-        };
-        break;
-                
-      case 'claude':
-        requestBody = {
-          model: modelName,
-          system: systemPrompt,
-          messages: [
-            { role: "user", content: text }
-          ],
-          max_tokens: 1000
-        };
-        break;
-        
-      case 'gemini':
-        requestBody = {
-          contents: [
-            {
-              role: "user",
-              parts: [{ text: systemPrompt + "\n\n" + text }]
-            }
-          ],
-          generationConfig: {
-            temperature: 0.2
-          }
-        };
-        break;
-        
-      case 'custom':
-        requestBody = {
-          model: modelName || 'default',
-          messages: [
-            { role: "system", content: systemPrompt },
-            { role: "user", content: text }
-          ]
-        };
-        break;
-        
-      default:
-        throw new Error(`不支持的模型类型: ${modelType}`);
-    }
-    
-    return { apiEndpoint, requestBody, modelType };
+
+    const entry = this.resolveCurrentModelEntry(config);
+    const apiEndpoint = this.normalizeChatEndpoint(entry.baseUrl);
+    const requestBody = this.mergeChatBody(entry, systemPrompt, text);
+
+    console.log(`准备请求: 端点=${apiEndpoint}, 模型=${entry.model.trim()}`);
+
+    return { apiEndpoint, requestBody };
   }
 
   /**
-   * 解析API响应，提取翻译结果
+   * 解析API响应，提取翻译结果（优先 OpenAI Chat 格式，兼容若干常见变体）
    * @param {object} data - API响应数据
-   * @param {string} modelType - 模型类型
    * @returns {string} 解析后的翻译文本
    */
-  static parseApiResponse(data, modelType) {
+  static parseApiResponse(data) {
     try {
-      switch (modelType) {
-        case 'silicon-flow':
-        case 'zhipu':
-        case 'gpt':
-          return data.choices[0].message.content;
-          
-        case 'claude':
-          return data.content[0].text;
-          
-        case 'gemini':
-          return data.candidates[0].content.parts[0].text;
-          
-        case 'custom':
-          // 自定义模型，尝试通用解析方法
-          return data.choices ? 
-            data.choices[0].message.content : 
-            (data.response || data.output || data.result || JSON.stringify(data));
-            
-        default:
-          throw new Error(`不支持的模型类型: ${modelType}`);
+      const choiceContent = data?.choices?.[0]?.message?.content;
+      if (choiceContent != null && typeof choiceContent === 'string') {
+        return choiceContent;
       }
+
+      const claudeText = data?.content?.[0]?.text;
+      if (claudeText != null && typeof claudeText === 'string') {
+        return claudeText;
+      }
+
+      const geminiText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (geminiText != null && typeof geminiText === 'string') {
+        return geminiText;
+      }
+
+      if (data?.response != null) {
+        return typeof data.response === 'string' ? data.response : JSON.stringify(data.response);
+      }
+
+      return JSON.stringify(data);
     } catch (error) {
       throw new Error(`解析响应数据时出错: ${error.message}`);
     }
@@ -225,44 +248,24 @@ class ApiService {
     if (!text || text.trim() === '') {
       throw new Error('没有提供要翻译的文本');
     }
-    
-    // 检测语言
+
     const isChineseQuery = /[\u4e00-\u9fa5]/.test(text);
-    
-    // 创建请求配置
-    const { apiEndpoint, requestBody, modelType } = await this.createRequestConfig(
+
+    const { apiEndpoint, requestBody } = await this.createRequestConfig(
       config,
       text,
       isChineseQuery
     );
-    
-    // 验证API端点
+
     if (!this.validateApiEndpoint(apiEndpoint)) {
       throw new Error(`无效的API端点: "${apiEndpoint}"`);
     }
-    
-    // 获取对应的API密钥
-    let apiKey;
-    
-    try {
-      if (modelType === 'custom' && config.customModel && config.customModel.apiKey) {
-        apiKey = config.customModel.apiKey;
-      } else if (config.apiKeys && config.apiKeys[modelType]) {
-        apiKey = config.apiKeys[modelType];
-      }
-      
-      // 调试信息
-      console.log(`模型类型: ${modelType}, API密钥存在: ${Boolean(apiKey)}`);
-      
-      if (!apiKey) {
-        throw new Error(`Please configure API key in extension settings first. (${modelType})`);
-      }
-    } catch (error) {
-      console.error('获取API密钥错误:', error);
-      throw new Error(`无法获取API密钥: ${error.message}`);
-    }
-    
-    // 发送API请求
+
+    const entry = this.resolveCurrentModelEntry(config);
+    const apiKey = entry.apiKey.trim();
+
+    console.log(`API 密钥已配置: ${Boolean(apiKey)}`);
+
     try {
       const response = await fetch(apiEndpoint, {
         method: 'POST',
@@ -272,14 +275,18 @@ class ApiService {
         },
         body: JSON.stringify(requestBody)
       });
-      
+
       if (!response.ok) {
         const errorText = await response.text().catch(() => 'No error details');
-        throw new Error(`API请求失败: ${response.status} - ${errorText}`);
+        let detail = `API请求失败: ${response.status} - ${errorText}`;
+        if (response.status === 404) {
+          detail += ' 常见原因：Base URL 未包含聊天路径，完整示例：https://api.deepseek.com/v1/chat/completions';
+        }
+        throw new Error(detail);
       }
-      
+
       const data = await response.json();
-      return this.parseApiResponse(data, modelType);
+      return this.parseApiResponse(data);
     } catch (error) {
       console.error('API请求错误:', error);
       if (error.message.includes('Failed to fetch')) {
@@ -290,10 +297,8 @@ class ApiService {
   }
 }
 
-// 同时支持 ES 模块导出和 Service Worker 导入
 export default ApiService;
 
-// 在 Service Worker 环境中将其附加到全局对象
 if (typeof self !== 'undefined' && self.constructor && self.constructor.name === 'ServiceWorkerGlobalScope') {
   self.ApiService = ApiService;
-} 
+}

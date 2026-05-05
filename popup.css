@@ -265,45 +265,89 @@ select {
   display: none;
 }
 
-/* 自定义模型配置 */
-#customModelConfig {
-  margin: 12px 0;
-  padding: 8px;
+.model-toolbar {
+  margin-bottom: 10px;
+}
+
+.model-toolbar-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: #6e6e73;
+  margin-bottom: 6px;
+}
+
+.model-toolbar-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.model-toolbar-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.toolbar-btn {
+  flex-shrink: 0;
+  padding: 8px 12px;
+  font-size: 13px;
+  border-radius: 8px;
+  border: 1px solid #d2d2d7;
+  background: #f2f2f7;
+  cursor: pointer;
+}
+
+.toolbar-btn:hover {
+  background: #e5e5ea;
+}
+
+.model-editor {
+  margin-top: 10px;
+  padding: 10px;
   background: #f9f9f9;
   border-radius: 8px;
   border: 1px solid #e5e5ea;
 }
 
-#customModelConfig input {
-  margin-bottom: 8px;
+.field-label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: #6e6e73;
+  margin-bottom: 4px;
+  margin-top: 10px;
 }
 
-#customModelConfig input:last-child {
-  margin-bottom: 0;
+.model-editor .field-label:first-child {
+  margin-top: 0;
 }
 
-/* API密钥区域 */
-.api-key-section {
-  margin-top: 8px;
+.model-editor input[type="text"],
+.model-editor textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 8px;
+  border: 1px solid #d2d2d7;
+  padding: 8px 10px;
+  font-size: 14px;
 }
 
-.api-key {
-  margin-bottom: 8px;
+.model-editor textarea {
+  font-family: ui-monospace, monospace;
+  font-size: 12px;
+  resize: vertical;
+  min-height: 72px;
 }
 
-.api-key:last-child {
-  margin-bottom: 0;
+.model-editor .key-input-container {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
 }
 
-.api-key a {
-  color: #007aff;
-  text-decoration: none;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.api-key a:hover {
-  text-decoration: underline;
+.model-editor .key-input-container input {
+  flex: 1;
 }
 
 /* 加载动画 */

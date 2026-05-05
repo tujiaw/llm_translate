@@ -2,6 +2,8 @@
 
 // 导入所需模块
 import Utils from './utils.js';
+import ApiService from './api.js';
+import ConfigService from './config.js';
 
 /**
  * 网页翻译服务类 - 提供全网页翻译功能
@@ -218,167 +220,69 @@ class WebpageTranslatorService {
     }
     
     try {
-      // 准备批量翻译提示
       const nativeLanguage = config.nativeLanguage || 'zh';
       const promptLanguage = Utils.getLanguageNameInEnglish(nativeLanguage);
       
-      // 构建每行格式为 "ID:::原文" 的文本列表
       const formattedTexts = nodeItems.map(item => `${item.id}:::${item.text}`);
       
-      // 构建批量翻译提示
       const systemPrompt = `You are a translation assistant. Please translate the following list of texts into ${promptLanguage}. 
 Each line has a format of "ID:::Text". Preserve the exact ID and translate only the text part.
 Your response must follow the same format of "ID:::Translated Text" and have exactly the same number of lines as the input.
 Do not add any explanation or additional content.`;
       
-      // 获取当前选择的模型信息
-      let modelInfo;
-      if (config.currentModel === 'custom' && config.customModel && config.customModel.enabled) {
-        modelInfo = config.customModel;
-      } else if (config.modelDefinitions && config.modelDefinitions[config.currentModel]) {
-        modelInfo = config.modelDefinitions[config.currentModel];
-      } else {
-        throw new Error(`Model information not found: ${config.currentModel || 'Model not specified'}`);
+      const entry = ConfigService.getCurrentModel(config);
+      if (!entry) {
+        throw new Error('Model information not found: no model selected');
       }
-      
-      // 构建查询文本 - 文本列表，每行一条
-      const queryText = formattedTexts.join('\n');
-      
-      // 构建API请求
-      const apiEndpoint = modelInfo.apiEndpoint;
-      const modelType = modelInfo.type;
-      const modelName = modelInfo.name;
-      const modelProvider = modelInfo.provider || modelType;
 
-      console.log(`Preparing batch translation request: model=${modelName}, type=${modelType}, provider=${modelProvider}`);
-      
-      let requestBody;
-      switch (modelType) {
-        case 'silicon-flow':
-        case 'zhipu':
-        case 'gpt':
-          requestBody = {
-            model: modelName,
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: queryText }
-            ],
-            temperature: 0.3
-          };
-          break;
-          
-        case 'claude':
-          requestBody = {
-            model: modelName,
-            system: systemPrompt,
-            messages: [
-              { role: "user", content: queryText }
-            ],
-            max_tokens: 4000
-          };
-          break;
-          
-        case 'gemini':
-          requestBody = {
-            contents: [
-              {
-                role: "user",
-                parts: [{ text: systemPrompt + "\n\n" + queryText }]
-              }
-            ],
-            generationConfig: {
-              temperature: 0.2
-            }
-          };
-          break;
-          
-        case 'custom':
-          requestBody = {
-            model: modelName || 'default',
-            messages: [
-              { role: "system", content: systemPrompt },
-              { role: "user", content: queryText }
-            ]
-          };
-          break;
-          
-        default:
-          throw new Error(`不支持的模型类型: ${modelType}`);
-      }
-      
-      // 获取API密钥
-      const apiKey = config.apiKeys && config.apiKeys[modelProvider];
-      if (!apiKey && modelInfo.requiresKey !== false) {
-        const errorMessage = `模型 ${modelName} 需要API密钥，但未提供。请在扩展的设置页面中配置 ${modelProvider} 的API密钥。`;
+      const apiEndpoint = ApiService.normalizeChatEndpoint(entry.baseUrl);
+      const apiKey = (entry.apiKey || '').trim();
+      const modelName = (entry.model || '').trim();
+
+      if (!apiEndpoint || !apiKey) {
+        const errorMessage = '请在扩展设置中为当前模型填写 Base URL 与 API Key';
         console.error(errorMessage);
         this.showTranslationComplete(errorMessage, true);
-        return nodeItems.map(item => ({ 
-          id: item.id, 
-          translation: `[Please configure ${modelProvider} API key in settings]` 
+        return nodeItems.map(item => ({
+          id: item.id,
+          translation: `[${errorMessage}]`
         }));
       }
-      
-      // 设置API选项
+
+      if (!modelName) {
+        const errorMessage = '请在扩展设置中填写 Model 名称';
+        console.error(errorMessage);
+        this.showTranslationComplete(errorMessage, true);
+        return nodeItems.map(item => ({
+          id: item.id,
+          translation: `[${errorMessage}]`
+        }));
+      }
+
+      const queryText = formattedTexts.join('\n');
+
+      let requestBody;
+      try {
+        requestBody = ApiService.mergeChatBody(entry, systemPrompt, queryText);
+      } catch (mergeErr) {
+        console.error(mergeErr);
+        return nodeItems.map(item => ({
+          id: item.id,
+          translation: `[${mergeErr.message}]`
+        }));
+      }
+
+      console.log(`Preparing batch translation request: model=${modelName}, endpoint=${apiEndpoint}`);
+
       const apiOptions = {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${apiKey}`
         },
         body: JSON.stringify(requestBody)
       };
-      
-      // 根据提供商添加认证头
-      if (apiKey) {
-        console.log(`Adding authentication header for ${modelProvider}`);
-        switch (modelProvider) {
-          case 'openai':
-            apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
-            break;
-          case 'anthropic':
-            apiOptions.headers['x-api-key'] = apiKey;
-            apiOptions.headers['anthropic-version'] = '2023-06-01';
-            break;
-          case 'google':
-            apiOptions.headers['x-goog-api-key'] = apiKey;
-            break;
-          case 'zhipu':
-            apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
-            break;
-          case 'moonshot':
-            apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
-            break;
-          case 'baichuan':
-            apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
-            break;
-          case 'minimax':
-            apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
-            break;
-          case 'stability':
-            apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
-            break;
-          case 'cloudflare':
-            apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
-            break;
-          case 'together':
-            apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
-            break;
-          case 'groq':
-            apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
-            break;
-          case 'deepseek':
-            apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
-            break;
-          case 'silicon-flow':
-            apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
-            break;
-          default:
-            apiOptions.headers['Authorization'] = `Bearer ${apiKey}`;
-        }
-      } else {
-        console.log(`No API key configured, but model marked as not requiring key`);
-      }
-      
-      // 发送API请求
+
       console.log(`Sending batch translation request to: ${apiEndpoint}`);
       const response = await fetch(apiEndpoint, apiOptions);
       
@@ -388,30 +292,31 @@ Do not add any explanation or additional content.`;
           const errorText = await response.text();
           errorMessage = `API请求失败 (${response.status}): ${errorText}`;
           
-          // 针对常见错误提供更友好的提示
           if (response.status === 401) {
-            let friendlyError = `Authentication failed: API key may be invalid or not properly configured. Please check ${modelProvider} API key in extension settings.`;
+            const friendlyError = 'Authentication failed: API key may be invalid or not properly configured.';
             console.error(friendlyError);
             this.showTranslationComplete(friendlyError, true);
-            return nodeItems.map(item => ({ 
-              id: item.id, 
-              translation: `[API Authentication failed: Please check ${modelProvider} API key]` 
+            return nodeItems.map(item => ({
+              id: item.id,
+              translation: '[API Authentication failed]'
             }));
-          } else if (response.status === 403) {
-            let friendlyError = `Access denied: Your API key may not have permission to access this resource. Please ensure the API key is correct and valid.`;
+          }
+          if (response.status === 403) {
+            const friendlyError = 'Access denied: Your API key may not have permission to access this resource.';
             console.error(friendlyError);
             this.showTranslationComplete(friendlyError, true);
-            return nodeItems.map(item => ({ 
-              id: item.id, 
-              translation: `[API Authentication failed: Please check ${modelProvider} API key]` 
+            return nodeItems.map(item => ({
+              id: item.id,
+              translation: '[API Authentication failed]'
             }));
-          } else if (response.status === 429) {
-            let friendlyError = `Too many requests: API call limit reached. Please try again later.`;
+          }
+          if (response.status === 429) {
+            const friendlyError = 'Too many requests: API call limit reached. Please try again later.';
             console.error(friendlyError);
             this.showTranslationComplete(friendlyError, true);
-            return nodeItems.map(item => ({ 
-              id: item.id, 
-              translation: `[API call limit reached]` 
+            return nodeItems.map(item => ({
+              id: item.id,
+              translation: '[API call limit reached]'
             }));
           }
         } catch (e) {
@@ -421,40 +326,12 @@ Do not add any explanation or additional content.`;
       }
       
       const data = await response.json();
-      
-      // 解析响应
+
       let translatedText;
-      switch (modelType) {
-        case 'silicon-flow':
-        case 'zhipu':
-        case 'gpt':
-          translatedText = data.choices[0].message.content;
-          break;
-          
-        case 'claude':
-          translatedText = data.content[0].text;
-          break;
-          
-        case 'gemini':
-          translatedText = data.candidates[0].content.parts[0].text;
-          break;
-          
-        case 'custom':
-          // 自定义模型可能有不同的响应格式，尝试几种常见格式
-          if (data.choices && data.choices[0] && data.choices[0].message) {
-            translatedText = data.choices[0].message.content;
-          } else if (data.content && data.content[0]) {
-            translatedText = data.content[0].text;
-          } else if (data.response) {
-            translatedText = data.response;
-          } else {
-            // 如果无法确定具体格式，尝试JSON.stringify整个响应作为备用
-            translatedText = JSON.stringify(data);
-          }
-          break;
-          
-        default:
-          throw new Error(`不支持的模型类型: ${modelType}`);
+      try {
+        translatedText = ApiService.parseApiResponse(data);
+      } catch (parseErr) {
+        throw new Error(parseErr.message || String(parseErr));
       }
       
       // 将翻译结果拆分为数组
@@ -651,64 +528,14 @@ Do not add any explanation or additional content.`;
    * @returns {object} 完整的配置对象
    */
   static ensureCompleteConfig(config) {
-    // 确保配置对象存在
     config = config || {};
-    
-    // 设置默认值
     config.nativeLanguage = config.nativeLanguage || 'zh';
-    config.currentModel = config.currentModel || 'glm-4-9b';
-    
-    // 确保API密钥对象存在
-    config.apiKeys = config.apiKeys || {};
-    
-    // 确保模型定义存在
-    if (!config.modelDefinitions || Object.keys(config.modelDefinitions).length === 0) {
-      config.modelDefinitions = {
-        'glm-4-9b': {
-          name: 'GLM-4-9B',
-          apiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions',
-          type: 'silicon-flow',
-          provider: 'silicon-flow',
-          requiresKey: true
-        },
-        'qwen-7b': {
-          name: 'Qwen2.5-7B',
-          apiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions',
-          type: 'silicon-flow',
-          provider: 'silicon-flow',
-          requiresKey: true
-        },
-        'glm-4-flash': {
-          name: 'GLM-4-Flash',
-          apiEndpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions',
-          type: 'zhipu',
-          provider: 'zhipu',
-          requiresKey: true
-        }
-      };
-    } else {
-      // 确保每个模型定义都有provider字段
-      for (const modelId in config.modelDefinitions) {
-        const model = config.modelDefinitions[modelId];
-        if (!model.provider) {
-          // 根据type推断provider
-          model.provider = model.type;
-        }
-      }
+    if (!Array.isArray(config.models)) {
+      config.models = [];
     }
-    
-    // 确保自定义模型配置存在
-    if (config.currentModel === 'custom') {
-      config.customModel = config.customModel || {
-        enabled: true,
-        name: 'Custom Model',
-        apiEndpoint: '',
-        type: 'custom',
-        provider: 'custom',
-        requiresKey: true
-      };
+    if (!config.models.some((m) => m.id === config.currentModelId)) {
+      config.currentModelId = config.models[0]?.id || '';
     }
-    
     return config;
   }
   

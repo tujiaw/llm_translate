@@ -38,41 +38,33 @@
         <span class="collapse-icon">▼</span>
       </h2>
       <div class="collapsible-content hidden" id="modelSectionContent">
-        <div class="model-selection">
-          <select id="modelSelect">
-            <!-- 模型选项将通过JavaScript动态加载 -->
-          </select>
+        <div class="model-toolbar">
+          <label class="model-toolbar-label" for="modelSelect">模型配置</label>
+          <div class="model-toolbar-row">
+            <select id="modelSelect"></select>
+            <button type="button" id="addModelBtn" class="toolbar-btn">添加</button>
+            <button type="button" id="removeModelBtn" class="toolbar-btn">删除</button>
+          </div>
         </div>
-        
-        <div id="customModelConfig" class="model-config hidden">
-          <input type="text" id="customModelName" placeholder="Model Name">
-          <input type="text" id="customModelEndpoint" placeholder="API Endpoint">
-        </div>
-        
-        <div class="api-key-section">
-          <div class="api-key silicon-flow">
-            <label for="siliconFlowApiKey">SiliconFlow <a href="https://cloud.siliconflow.cn/account/ak">API Key</a></label>
-            <div class="key-input-container">
-              <input type="password" id="siliconFlowApiKey" placeholder="Enter API Key">
-              <button id="showSiliconFlowKeyBtn" class="show-key-btn"><img src="images/eye-close.png" alt="Show" class="eye-icon"></button>
-            </div>
+
+        <div id="modelEditor" class="model-editor">
+          <label class="field-label" for="modelLabel">显示名称（可选）</label>
+          <input type="text" id="modelLabel" placeholder="下拉列表中显示的名称">
+
+          <label class="field-label" for="modelBaseUrl">Base URL</label>
+          <input type="text" id="modelBaseUrl" placeholder="https://api.deepseek.com/v1/chat/completions" autocomplete="off">
+
+          <label class="field-label" for="modelName">Model</label>
+          <input type="text" id="modelName" placeholder="模型 ID，如 gpt-4o-mini" autocomplete="off">
+
+          <label class="field-label" for="modelApiKey">API Key</label>
+          <div class="key-input-container">
+            <input type="password" id="modelApiKey" placeholder="API Key" autocomplete="off">
+            <button type="button" id="showModelKeyBtn" class="show-key-btn"><img src="images/eye-close.png" alt="Show" class="eye-icon"></button>
           </div>
-          
-          <div class="api-key zhipu">
-            <label for="zhipuApiKey">ZhipuAI <a href="https://open.bigmodel.cn/usercenter/proj-mgmt/apikeys">API Key</a></label>
-            <div class="key-input-container">
-              <input type="password" id="zhipuApiKey" placeholder="Enter API Key">
-              <button id="showZhipuKeyBtn" class="show-key-btn"><img src="images/eye-close.png" alt="Show" class="eye-icon"></button>
-            </div>
-          </div>
-          
-          <div class="api-key custom hidden">
-            <label for="customApiKey">Custom API Key:</label>
-            <div class="key-input-container">
-              <input type="password" id="customApiKey" placeholder="Enter API Key">
-              <button id="showCustomKeyBtn" class="show-key-btn"><img src="images/eye-close.png" alt="Show" class="eye-icon"></button>
-            </div>
-          </div>
+
+          <label class="field-label" for="modelBodyJson">自定义 Body JSON（可选，合并到请求体）</label>
+          <textarea id="modelBodyJson" rows="4" placeholder='例如 {"temperature": 0.5, "max_tokens": 2048}'></textarea>
         </div>
       </div>
     </div>

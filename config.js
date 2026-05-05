@@ -1,80 +1,12 @@
 // config.js - 配置管理模块
 
 /**
- * 默认配置值
+ * 默认配置（仅保留母语与通用模型列表）
  */
 const DEFAULT_CONFIG = {
-  // 当前选择的模型
-  currentModel: 'glm-4-9b',
-  
-  // Native language setting
   nativeLanguage: 'zh',
-  
-  // 模型分组配置
-  modelGroups: {
-    'silicon-flow': {
-      label: 'SiliconFlow Free Models',
-      order: 1
-    },
-    'zhipu': {
-      label: 'ZhipuAI Free Models',
-      order: 2
-    },
-    'custom': {
-      label: 'Custom',
-      order: 3
-    }
-  },
-  
-  // 模型定义列表
-  modelDefinitions: {
-    // 免费模型
-    'glm-4-9b': {
-      name: 'THUDM/GLM-4-9B-0414',
-      type: 'silicon-flow',
-      apiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
-    },
-    'qwen-7b': {
-      name: 'Qwen/Qwen2.5-7B-Instruct',
-      type: 'silicon-flow',
-      apiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
-    },
-    'qwen-coder-7b': {
-      name: 'Qwen/Qwen2.5-Coder-7B-Instruct',
-      type: 'silicon-flow',
-      apiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
-    },
-    'glm-4-9b-chat': {
-      name: 'THUDM/glm-4-9b-chat',
-      type: 'silicon-flow',
-      apiEndpoint: 'https://api.siliconflow.cn/v1/chat/completions'
-    },
-    // 新增中科院大模型
-    'glm-4-flash': {
-      name: 'GLM-4-Flash',
-      type: 'zhipu',
-      apiEndpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
-    },
-    'glm-4-flash-250414': {
-      name: 'GLM-4-Flash-250414',
-      type: 'zhipu',
-      apiEndpoint: 'https://open.bigmodel.cn/api/paas/v4/chat/completions'
-    }
-  },
-  
-  // API密钥设置
-  apiKeys: {
-    'silicon-flow': '',
-    'zhipu': ''
-  },
-  
-  // 自定义模型设置
-  customModel: {
-    enabled: false,
-    name: '',
-    apiEndpoint: '',
-    type: 'custom'
-  }
+  models: [],
+  currentModelId: ''
 };
 
 /**
@@ -90,7 +22,7 @@ class ConfigService {
    */
   static _deepMerge(target, source) {
     const result = { ...target };
-    
+
     for (const key in source) {
       if (Object.prototype.hasOwnProperty.call(source, key)) {
         if (typeof source[key] === 'object' && source[key] !== null && !Array.isArray(source[key])) {
@@ -100,10 +32,10 @@ class ConfigService {
         }
       }
     }
-    
+
     return result;
   }
-  
+
   /**
    * 创建安全的配置对象，确保所有必要字段都存在
    * @param {object} config - 用户配置
@@ -112,6 +44,66 @@ class ConfigService {
    */
   static _createSafeConfig(config) {
     return this._deepMerge(DEFAULT_CONFIG, config || {});
+  }
+
+  /**
+   * 生成新的模型条目 ID
+   * @returns {string}
+   */
+  static newModelId() {
+    if (typeof crypto !== 'undefined' && crypto.randomUUID) {
+      return crypto.randomUUID();
+    }
+    return `m_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  }
+
+  /**
+   * 规范化为仅包含通用字段的配置，并处理旧版 customModel 迁移
+   * @param {object} config - 合并后的原始配置
+   * @returns {object} 规范配置
+   */
+  static normalizeConfig(config) {
+    let models = Array.isArray(config.models) ? config.models.map((m) => ({ ...m })) : [];
+    let currentModelId = typeof config.currentModelId === 'string' ? config.currentModelId : '';
+
+    if (models.length === 0 && config.customModel && config.customModel.enabled) {
+      const cm = config.customModel;
+      const hasLegacy = (cm.apiEndpoint || '').trim() || (cm.name || '').trim();
+      if (hasLegacy) {
+        const id = ConfigService.newModelId();
+        models.push({
+          id,
+          label: (cm.name || '').trim() || 'Custom',
+          baseUrl: (cm.apiEndpoint || '').trim(),
+          model: (cm.name || '').trim(),
+          apiKey: (cm.apiKey || '').trim(),
+          bodyJson: '{}'
+        });
+        currentModelId = id;
+      }
+    }
+
+    models = models.map((m) => {
+      const rawJson = (m.bodyJson || '').trim();
+      return {
+        id: m.id || ConfigService.newModelId(),
+        label: (m.label || '').trim(),
+        baseUrl: (m.baseUrl || '').trim(),
+        model: (m.model || '').trim(),
+        apiKey: (m.apiKey || '').trim(),
+        bodyJson: rawJson || '{}'
+      };
+    });
+
+    if (!models.some((m) => m.id === currentModelId)) {
+      currentModelId = models[0]?.id || '';
+    }
+
+    return {
+      nativeLanguage: config.nativeLanguage || DEFAULT_CONFIG.nativeLanguage,
+      models,
+      currentModelId
+    };
   }
 
   /**
@@ -128,24 +120,15 @@ class ConfigService {
             reject(new Error(`加载设置失败: ${chrome.runtime.lastError.message}`));
             return;
           }
-          
-          // 使用深度合并创建配置
-          const config = this._createSafeConfig(items);
-          
-          // 确保有效的currentModel
-          if (!config.modelDefinitions[config.currentModel] && config.currentModel !== 'custom') {
-            config.currentModel = DEFAULT_CONFIG.currentModel;
-            console.warn(`无效的模型选择，重置为默认: ${config.currentModel}`);
-          }
-          
+
+          const merged = this._createSafeConfig(items);
+          const config = this.normalizeConfig(merged);
+
           console.log('配置加载成功', JSON.stringify({
-            currentModel: config.currentModel,
-            modelDefinitionsCount: Object.keys(config.modelDefinitions).length,
-            apiKeySiliconFlow: config.apiKeys['silicon-flow'] ? '已设置' : '未设置',
-            apiKeyZhipu: config.apiKeys['zhipu'] ? '已设置' : '未设置',
-            customModelEnabled: Boolean(config.customModel.enabled)
+            currentModelId: config.currentModelId,
+            modelsCount: config.models.length
           }));
-          
+
           resolve(config);
         });
       } catch (error) {
@@ -156,27 +139,38 @@ class ConfigService {
   }
 
   /**
-   * 保存配置
+   * 保存配置（仅写入通用字段，移除历史厂商相关键）
    * @param {object} config - 要保存的配置对象
    * @returns {Promise<void>}
    */
   static async save(config) {
     return new Promise((resolve, reject) => {
       try {
-        // 创建安全的配置对象
-        const safeConfig = this._createSafeConfig(config);
-        
-        // 记录日志
+        const merged = this._createSafeConfig(config);
+        const normalized = this.normalizeConfig(merged);
+
+        const payload = {
+          nativeLanguage: normalized.nativeLanguage,
+          models: normalized.models,
+          currentModelId: normalized.currentModelId
+        };
+
         console.log('正在保存配置...');
-        
-        chrome.storage.sync.set(safeConfig, () => {
+
+        chrome.storage.sync.set(payload, () => {
           if (chrome.runtime.lastError) {
             console.error('Chrome存储错误:', chrome.runtime.lastError);
             reject(new Error(`保存设置失败: ${chrome.runtime.lastError.message}`));
-          } else {
+            return;
+          }
+          const legacyKeys = ['modelDefinitions', 'modelGroups', 'apiKeys', 'customModel', 'currentModel'];
+          chrome.storage.sync.remove(legacyKeys, () => {
+            if (chrome.runtime.lastError) {
+              console.warn('清理旧配置键时出错:', chrome.runtime.lastError);
+            }
             console.log('配置保存成功');
             resolve();
-          }
+          });
         });
       } catch (error) {
         console.error('保存配置时发生错误:', error);
@@ -203,33 +197,20 @@ class ConfigService {
   }
 
   /**
-   * 获取当前选择的模型信息
+   * 当前选中的模型条目（无选中或未配置时返回 null）
    * @param {object} config - 配置对象
-   * @returns {object} 当前选择的模型信息
+   * @returns {object|null}
    */
-  static getCurrentModelInfo(config) {
-    if (config.customModel && config.customModel.enabled) {
-      return config.customModel;
+  static getCurrentModel(config) {
+    if (!config || !Array.isArray(config.models)) {
+      return null;
     }
-    
-    return config.modelDefinitions[config.currentModel];
-  }
-
-  /**
-   * 获取模型对应的API密钥
-   * @param {object} config - 配置对象
-   * @param {string} modelType - 模型类型
-   * @returns {string} API密钥
-   */
-  static getApiKeyForModel(config, modelType) {
-    return config.apiKeys[modelType] || '';
+    return config.models.find((m) => m.id === config.currentModelId) || null;
   }
 }
 
-// 同时支持 ES 模块导出和 Service Worker 导入
 export default ConfigService;
 
-// 在 Service Worker 环境中将其附加到全局对象
 if (typeof self !== 'undefined' && self.constructor && self.constructor.name === 'ServiceWorkerGlobalScope') {
   self.ConfigService = ConfigService;
-} 
+}

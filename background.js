@@ -48,25 +48,10 @@ async function initializeConfig() {
   try {
     const config = await ConfigService.load();
     logConfigInfo(config, '已加载');
-    
-    if (!isConfigComplete(config)) {
-      console.log('配置不完整，重置为默认值');
-      ConfigService.reset();
-    } else {
-      console.log('已有完整配置，无需设置默认值');
-    }
+    console.log('已有完整配置或新建默认配置');
   } catch (error) {
     console.error('初始化配置时出错:', error);
   }
-}
-
-/**
- * 检查配置是否完整
- * @param {Object} config - 配置对象
- * @returns {boolean} - 配置是否完整
- */
-function isConfigComplete(config) {
-  return config.modelDefinitions && Object.keys(config.modelDefinitions).length > 0;
 }
 
 /**
@@ -76,13 +61,8 @@ function isConfigComplete(config) {
  */
 function logConfigInfo(config, prefix = '') {
   console.log(`${prefix}配置信息:`, JSON.stringify({
-    currentModel: config.currentModel,
-    hasModelDefinitions: Boolean(config.modelDefinitions),
-    modelDefinitionsCount: config.modelDefinitions ? Object.keys(config.modelDefinitions).length : 0,
-    hasApiKeys: Boolean(config.apiKeys),
-    apiKeysSiliconFlow: Boolean(config.apiKeys?.['silicon-flow']),
-    apiKeysZhipu: Boolean(config.apiKeys?.['zhipu']),
-    customModelEnabled: Boolean(config.customModel?.enabled)
+    currentModelId: config.currentModelId,
+    modelsCount: Array.isArray(config.models) ? config.models.length : 0
   }));
 }
 
@@ -357,73 +337,32 @@ function handleTranslationError(error, context, tabId, text) {
 }
 
 /**
- * 获取模型信息
- * @param {Object} config - 配置对象
- * @returns {Object|null} - 模型信息或null（出错时）
- */
-function getModelInfo(config) {
-  if (config.currentModel === 'custom' && config.customModel?.enabled) {
-    return config.customModel;
-  }
-  
-  if (config.modelDefinitions?.[config.currentModel]) {
-    return config.modelDefinitions[config.currentModel];
-  }
-  
-  throw new Error(`未找到模型信息: ${config.currentModel || '未指定模型'}`);
-}
-
-/**
- * 获取API密钥
- * @param {string} modelType - 模型类型
- * @param {Object} config - 配置对象
- * @returns {string|null} - API密钥或null（未找到时）
- */
-function getApiKey(modelType, config) {
-  if (modelType === 'custom' && config.customModel?.apiKey) {
-    return config.customModel.apiKey;
-  }
-  
-  if (config.apiKeys?.[modelType]) {
-    return config.apiKeys[modelType];
-  }
-  
-  return null;
-}
-
-/**
  * 执行翻译操作
  * @param {string} text - 要翻译的文本
  * @param {number} tabId - 标签页ID
  */
 async function performTranslation(text, tabId) {
   console.log('执行翻译操作，文本:', text, '标签ID:', tabId);
-  
+
   if (!text?.trim()) {
     console.log('文本为空，取消翻译');
     return;
   }
-  
+
   try {
     const config = await ConfigService.load();
     logConfigInfo(config, '翻译请求加载的');
-    
-    const modelInfo = getModelInfo(config);
-    const modelType = modelInfo.type;
-    const apiKey = getApiKey(modelType, config);
-    
-    if (!apiKey) {
-      const errorMessage = `Please configure API key in extension settings first.\n\n请先在扩展设置中配置 ${modelType} 的API密钥。`;
+
+    const entry = ConfigService.getCurrentModel(config);
+    if (!entry || !(entry.apiKey || '').trim()) {
+      const errorMessage = '请先在扩展设置中添加模型并填写 API Key。';
       sendMessageToTab(tabId, CONSTANTS.ACTIONS.TRANSLATE, text, errorMessage, true);
       return;
     }
-    
-    console.log(`开始翻译，模型类型: ${modelType}, 模型名称: ${modelInfo.name}`);
-    
+
     const translatedText = await TranslatorService.translate(text);
     console.log('翻译成功:', translatedText);
     sendMessageToTab(tabId, CONSTANTS.ACTIONS.TRANSLATE, text, translatedText, false);
-    
   } catch (error) {
     handleTranslationError(error, '翻译过程中出错', tabId, text);
   }
