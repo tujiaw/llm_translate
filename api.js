@@ -1,116 +1,134 @@
-// api.js - 处理所有LLM API调用
+// api.js - 处理所有 LLM API 调用
 import Utils from './utils.js';
 import ConfigService from './config.js';
 
-/**
- * API服务类 - 处理所有与LLM模型API相关的逻辑
- */
 class ApiService {
-  /**
-   * 验证API端点URL是否有效
-   * @param {string} url - API端点URL
-   * @returns {boolean} URL是否有效
-   */
+  static TEST_TIMEOUT_MS = 15000;
+
   static validateApiEndpoint(url) {
     try {
       new URL(url);
       return true;
-    } catch (e) {
-      console.error('API端点无效:', url, e);
+    } catch (error) {
+      console.error('API端点无效:', url, error);
       return false;
     }
   }
 
+  static normalizeApiKey(apiKey) {
+    return (apiKey || '').trim().replace(/^Bearer\s+/i, '');
+  }
+
   /**
-   * 将「仅域名」或 OpenAI SDK 常用的 base（/ 或 /v1）补全为 Chat Completions 路径，避免 404。
-   * @param {string} rawUrl - 用户填写的 Base URL
-   * @returns {string}
+   * 将 OpenAI SDK 常用的 base_url（域名、/v1、/openai/v1 等）补全为 Chat Completions 路径。
    */
   static normalizeChatEndpoint(rawUrl) {
     const trimmed = (rawUrl || '').trim();
     if (!trimmed) {
       return trimmed;
     }
+
     try {
       const url = new URL(trimmed);
-      let path = url.pathname.replace(/\/+$/, '');
-      if (path === '') {
-        path = '/';
-      }
+      const path = url.pathname.replace(/\/+$/, '') || '/';
 
-      if (path === '/') {
+      if (path.endsWith('/chat/completions')) {
+        url.pathname = path;
+      } else if (path === '/') {
         url.pathname = '/v1/chat/completions';
-        return url.href.replace(/\/+$/, '');
+      } else {
+        url.pathname = `${path}/chat/completions`;
       }
 
-      if (path === '/v1') {
-        url.pathname = '/v1/chat/completions';
-        return url.href.replace(/\/+$/, '');
-      }
-
-      if (path === '/chat/completions') {
-        url.pathname = '/v1/chat/completions';
-        return url.href.replace(/\/+$/, '');
-      }
-
-      return trimmed.replace(/\/+$/, '');
+      url.search = '';
+      url.hash = '';
+      return url.toString().replace(/\/+$/, '');
     } catch {
-      return trimmed;
+      return trimmed.replace(/\/+$/, '');
     }
   }
 
-  /**
-   * @param {object} target - 目标对象
-   * @param {object} source - 源对象
-   * @returns {object}
-   */
+  static buildHeaders(entry, apiKey) {
+    const headers = {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`
+    };
+
+    try {
+      const host = new URL(entry.baseUrl).hostname.toLowerCase();
+      if (host.includes('openrouter.ai')) {
+        headers['HTTP-Referer'] = 'https://github.com/llm_translate';
+        headers['X-Title'] = 'LLM Translation';
+      }
+    } catch {
+      // 无效 URL 由后续校验处理
+    }
+
+    return headers;
+  }
+
   static deepMerge(target, source) {
     const base = target && typeof target === 'object' ? { ...target } : {};
     if (!source || typeof source !== 'object' || Array.isArray(source)) {
       return base;
     }
+
     const result = { ...base };
     for (const key of Object.keys(source)) {
-      const sv = source[key];
-      const bv = result[key];
-      if (sv && typeof sv === 'object' && !Array.isArray(sv)) {
-        result[key] = this.deepMerge(bv && typeof bv === 'object' ? bv : {}, sv);
+      const sourceValue = source[key];
+      const baseValue = result[key];
+      if (sourceValue && typeof sourceValue === 'object' && !Array.isArray(sourceValue)) {
+        result[key] = this.deepMerge(
+          baseValue && typeof baseValue === 'object' ? baseValue : {},
+          sourceValue
+        );
       } else {
-        result[key] = sv;
+        result[key] = sourceValue;
       }
     }
     return result;
   }
 
-  /**
-   * 解析并校验当前模型条目
-   * @param {object} config - 配置信息
-   * @returns {object} 模型条目
-   */
+  static parseBodyJson(rawJson) {
+    const raw = (rawJson || '').trim();
+    if (!raw) {
+      return {};
+    }
+
+    let parsed;
+    try {
+      parsed = JSON.parse(raw);
+    } catch (error) {
+      throw new Error(`自定义 Body JSON 解析失败: ${error.message}`);
+    }
+
+    if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      throw new Error('自定义 Body JSON 必须是 JSON 对象');
+    }
+    return parsed;
+  }
+
   static resolveCurrentModelEntry(config) {
     const entry = ConfigService.getCurrentModel(config);
     if (!entry) {
       throw new Error('请先在扩展设置中添加并选择一个模型');
     }
-    if (!(entry.baseUrl || '').trim()) {
-      throw new Error('当前模型缺少 Base URL');
-    }
-    if (!(entry.model || '').trim()) {
-      throw new Error('当前模型缺少 Model 名称');
-    }
-    if (!(entry.apiKey || '').trim()) {
-      throw new Error('当前模型缺少 API Key');
-    }
+    this.assertModelEntry(entry);
     return entry;
   }
 
-  /**
-   * 合并翻译请求体：OpenAI 兼容结构 + 用户自定义 JSON（messages 始终由扩展填充）
-   * @param {object} entry - 模型条目
-   * @param {string} systemPrompt - 系统提示
-   * @param {string} userContent - 用户内容
-   * @returns {object} requestBody
-   */
+  static assertModelEntry(entry) {
+    if (!(entry.baseUrl || '').trim()) {
+      throw new Error('请填写接口地址（Base URL）');
+    }
+    if (!(entry.model || '').trim()) {
+      throw new Error('请填写模型 ID');
+    }
+    if (!this.normalizeApiKey(entry.apiKey)) {
+      throw new Error('请填写 API Key');
+    }
+  }
+
   static mergeChatBody(entry, systemPrompt, userContent) {
     const modelName = entry.model.trim();
     const baseBody = {
@@ -119,37 +137,18 @@ class ApiService {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userContent }
       ],
-      temperature: 0.3
+      temperature: 0.3,
+      stream: false
     };
 
-    const raw = (entry.bodyJson || '').trim();
-    let extra = {};
-    if (raw) {
-      let parsed;
-      try {
-        parsed = JSON.parse(raw);
-      } catch (e) {
-        throw new Error(`自定义 Body JSON 解析失败: ${e.message}`);
-      }
-      if (parsed === null || typeof parsed !== 'object' || Array.isArray(parsed)) {
-        throw new Error('自定义 Body JSON 必须是 JSON 对象');
-      }
-      extra = parsed;
-    }
-
+    const extra = this.parseBodyJson(entry.bodyJson);
     const merged = this.deepMerge(baseBody, extra);
     merged.model = modelName;
     merged.messages = baseBody.messages;
+    merged.stream = false;
     return merged;
   }
 
-  /**
-   * 根据配置与文本内容创建API请求配置
-   * @param {object} config - 配置信息
-   * @param {string} text - 要翻译的文本
-   * @param {boolean} isChineseQuery - 是否为中文查询
-   * @returns {object} 包含 apiEndpoint 与 requestBody
-   */
   static async createRequestConfig(config, text, isChineseQuery) {
     console.log('创建请求配置', JSON.stringify({
       currentModelId: config.currentModelId,
@@ -158,13 +157,11 @@ class ApiService {
     }));
 
     const nativeLanguage = config.nativeLanguage || 'zh';
-
     let sourceLang;
     let targetLang;
-    let detectResult;
 
     try {
-      detectResult = Utils.detectLanguage(text);
+      const detectResult = Utils.detectLanguage(text);
       console.log(`语言检测结果: 检测语言=${detectResult}, 用户母语=${nativeLanguage}`);
 
       if (detectResult === 'unknown') {
@@ -193,38 +190,57 @@ class ApiService {
       }
     }
 
-    console.log(`语言检测结果: 源语言=${sourceLang}, 目标语言=${targetLang}`);
-
     const systemPrompt = `You are a translation assistant. Please translate the following ${sourceLang} text into ${targetLang}, maintaining the original meaning, format, and tone. Output only the translation result without any explanation or additional content.`;
-
     const entry = this.resolveCurrentModelEntry(config);
     const apiEndpoint = this.normalizeChatEndpoint(entry.baseUrl);
     const requestBody = this.mergeChatBody(entry, systemPrompt, text);
 
     console.log(`准备请求: 端点=${apiEndpoint}, 模型=${entry.model.trim()}`);
-
-    return { apiEndpoint, requestBody };
+    return { apiEndpoint, requestBody, entry };
   }
 
-  /**
-   * 解析API响应，提取翻译结果（优先 OpenAI Chat 格式，兼容若干常见变体）
-   * @param {object} data - API响应数据
-   * @returns {string} 解析后的翻译文本
-   */
+  static extractTextContent(value) {
+    if (value == null) {
+      return '';
+    }
+    if (typeof value === 'string') {
+      return value;
+    }
+    if (Array.isArray(value)) {
+      return value.map((part) => this.extractTextContent(part)).join('');
+    }
+    if (typeof value === 'object') {
+      if (typeof value.text === 'string') {
+        return value.text;
+      }
+      if (typeof value.content === 'string') {
+        return value.content;
+      }
+      if (Array.isArray(value.content)) {
+        return this.extractTextContent(value.content);
+      }
+      return '';
+    }
+    return String(value);
+  }
+
   static parseApiResponse(data) {
     try {
-      const choiceContent = data?.choices?.[0]?.message?.content;
-      if (choiceContent != null && typeof choiceContent === 'string') {
+      const message = data?.choices?.[0]?.message;
+      const choiceContent = this.extractTextContent(message?.content)
+        || this.extractTextContent(message?.reasoning_content)
+        || this.extractTextContent(data?.choices?.[0]?.text);
+      if (choiceContent) {
         return choiceContent;
       }
 
-      const claudeText = data?.content?.[0]?.text;
-      if (claudeText != null && typeof claudeText === 'string') {
+      const claudeText = this.extractTextContent(data?.content?.[0]?.text);
+      if (claudeText) {
         return claudeText;
       }
 
-      const geminiText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (geminiText != null && typeof geminiText === 'string') {
+      const geminiText = this.extractTextContent(data?.candidates?.[0]?.content?.parts?.[0]?.text);
+      if (geminiText) {
         return geminiText;
       }
 
@@ -232,68 +248,198 @@ class ApiService {
         return typeof data.response === 'string' ? data.response : JSON.stringify(data.response);
       }
 
-      return JSON.stringify(data);
+      throw new Error('响应里没有可用的文本内容，请确认接口是 OpenAI Chat Completions 兼容格式');
     } catch (error) {
       throw new Error(`解析响应数据时出错: ${error.message}`);
     }
   }
 
-  /**
-   * 执行翻译请求
-   * @param {string} text - 要翻译的文本
-   * @param {object} config - 配置信息
-   * @returns {Promise<string>} 翻译结果
-   */
+  static statusHint(status) {
+    switch (status) {
+      case 401:
+        return 'API Key 无效或未开通，请核对后重试。';
+      case 403:
+        return '当前 Key 无权调用该模型，请检查模型名或套餐权限。';
+      case 404:
+        return '接口地址不正确。可只填到 /v1，扩展会自动补全 /chat/completions。';
+      case 429:
+        return '请求过于频繁，或额度/余额不足。';
+      case 500:
+      case 502:
+      case 503:
+        return '服务端暂时出错，请稍后重试。';
+      default:
+        return '';
+    }
+  }
+
+  static async readErrorDetail(response) {
+    const errorText = await response.text().catch(() => '');
+    let message = errorText;
+    try {
+      const json = JSON.parse(errorText);
+      message = json?.error?.message || json?.message || json?.error?.code || errorText;
+    } catch {
+      // 保留原始文本
+    }
+
+    const hint = this.statusHint(response.status);
+    return [`HTTP ${response.status}`, message, hint].filter(Boolean).join(' — ');
+  }
+
+  static describeNetworkError(error, apiEndpoint) {
+    const raw = error?.message || String(error);
+    if (!raw.includes('Failed to fetch') && error?.name !== 'TypeError') {
+      return raw;
+    }
+
+    let extra = '无法连接到接口，请检查网络、地址和本地服务是否已启动。';
+    try {
+      const host = new URL(apiEndpoint).hostname;
+      if (host === 'localhost' || host === '127.0.0.1') {
+        extra = '无法连接本地服务。请确认 Ollama 等已启动，地址一般为 http://localhost:11434/v1。';
+      }
+    } catch {
+      // 忽略 URL 解析失败
+    }
+    return extra;
+  }
+
+  static mergeAbortSignals(signals) {
+    const active = signals.filter(Boolean);
+    if (active.length === 0) {
+      return undefined;
+    }
+    if (active.length === 1) {
+      return active[0];
+    }
+    if (typeof AbortSignal.any === 'function') {
+      return AbortSignal.any(active);
+    }
+
+    const controller = new AbortController();
+    for (const signal of active) {
+      if (signal.aborted) {
+        controller.abort(signal.reason);
+        return controller.signal;
+      }
+      signal.addEventListener('abort', () => {
+        controller.abort(signal.reason);
+      }, { once: true });
+    }
+    return controller.signal;
+  }
+
+  static createTimeoutSignal(timeoutMs) {
+    if (typeof AbortSignal.timeout === 'function') {
+      return AbortSignal.timeout(timeoutMs);
+    }
+    const controller = new AbortController();
+    setTimeout(() => {
+      controller.abort(new DOMException(`Timeout ${timeoutMs}ms`, 'TimeoutError'));
+    }, timeoutMs);
+    return controller.signal;
+  }
+
+  static isAbortError(error) {
+    return error?.name === 'AbortError' || error?.name === 'TimeoutError';
+  }
+
+  static isTimeoutReason(error, signal) {
+    const reason = signal?.reason || error;
+    return error?.name === 'TimeoutError' || reason?.name === 'TimeoutError';
+  }
+
+  static async postChat(entry, requestBody, options = {}) {
+    const apiEndpoint = this.normalizeChatEndpoint(entry.baseUrl);
+    if (!this.validateApiEndpoint(apiEndpoint)) {
+      throw new Error(`无效的接口地址: "${entry.baseUrl || ''}"`);
+    }
+
+    const apiKey = this.normalizeApiKey(entry.apiKey);
+    try {
+      const fetchOptions = {
+        method: 'POST',
+        headers: this.buildHeaders(entry, apiKey),
+        body: JSON.stringify(requestBody)
+      };
+      if (options.signal) {
+        fetchOptions.signal = options.signal;
+      }
+
+      const response = await fetch(apiEndpoint, fetchOptions);
+
+      if (!response.ok) {
+        throw new Error(await this.readErrorDetail(response));
+      }
+
+      return response.json();
+    } catch (error) {
+      if (this.isAbortError(error)) {
+        throw error;
+      }
+      console.error('API请求错误:', error);
+      if (error && typeof error.message === 'string' && error.message.startsWith('HTTP ')) {
+        throw error;
+      }
+      throw new Error(this.describeNetworkError(error, apiEndpoint));
+    }
+  }
+
+  static async testConnection(entry, options = {}) {
+    this.assertModelEntry(entry);
+
+    const timeoutMs = options.timeoutMs || ApiService.TEST_TIMEOUT_MS;
+    const timeoutSec = Math.max(1, Math.round(timeoutMs / 1000));
+    const mergedSignal = this.mergeAbortSignals([
+      options.signal,
+      this.createTimeoutSignal(timeoutMs)
+    ]);
+
+    const extra = this.parseBodyJson(entry.bodyJson);
+    const requestBody = this.deepMerge({
+      model: entry.model.trim(),
+      messages: [{ role: 'user', content: 'Reply with the single word: pong' }],
+      stream: false
+    }, extra);
+
+    requestBody.model = entry.model.trim();
+    requestBody.messages = [
+      { role: 'user', content: 'Reply with the single word: pong' }
+    ];
+    requestBody.stream = false;
+
+    const started = Date.now();
+    try {
+      const data = await this.postChat(entry, requestBody, { signal: mergedSignal });
+      const preview = this.parseApiResponse(data).trim().slice(0, 80);
+      const latencyMs = Date.now() - started;
+      const endpoint = this.normalizeChatEndpoint(entry.baseUrl);
+      return { ok: true, latencyMs, preview, endpoint };
+    } catch (error) {
+      if (options.signal?.aborted) {
+        const cancelError = new Error('已取消测试');
+        cancelError.code = 'TEST_CANCELLED';
+        throw cancelError;
+      }
+      if (this.isAbortError(error) || this.isTimeoutReason(error, mergedSignal)) {
+        const timeoutError = new Error(`连接超时（${timeoutSec}秒），请检查网络或接口是否可访问。`);
+        timeoutError.code = 'TEST_TIMEOUT';
+        throw timeoutError;
+      }
+      throw error;
+    }
+  }
+
   static async translate(text, config) {
     if (!text || text.trim() === '') {
       throw new Error('没有提供要翻译的文本');
     }
 
     const isChineseQuery = /[\u4e00-\u9fa5]/.test(text);
-
-    const { apiEndpoint, requestBody } = await this.createRequestConfig(
-      config,
-      text,
-      isChineseQuery
-    );
-
-    if (!this.validateApiEndpoint(apiEndpoint)) {
-      throw new Error(`无效的API端点: "${apiEndpoint}"`);
-    }
-
-    const entry = this.resolveCurrentModelEntry(config);
-    const apiKey = entry.apiKey.trim();
-
-    console.log(`API 密钥已配置: ${Boolean(apiKey)}`);
-
-    try {
-      const response = await fetch(apiEndpoint, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(requestBody)
-      });
-
-      if (!response.ok) {
-        const errorText = await response.text().catch(() => 'No error details');
-        let detail = `API请求失败: ${response.status} - ${errorText}`;
-        if (response.status === 404) {
-          detail += ' 常见原因：Base URL 未包含聊天路径，完整示例：https://api.deepseek.com/v1/chat/completions';
-        }
-        throw new Error(detail);
-      }
-
-      const data = await response.json();
-      return this.parseApiResponse(data);
-    } catch (error) {
-      console.error('API请求错误:', error);
-      if (error.message.includes('Failed to fetch')) {
-        throw new Error(`无法连接到API服务器，请检查网络连接或API端点是否正确`);
-      }
-      throw error;
-    }
+    const { requestBody, entry } = await this.createRequestConfig(config, text, isChineseQuery);
+    const data = await this.postChat(entry, requestBody);
+    return this.parseApiResponse(data);
   }
 }
 

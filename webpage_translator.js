@@ -476,16 +476,17 @@ Do not add any explanation or additional content.`;
    * @param {number} total - 总数量
    */
   static updateTranslationProgress(current, total) {
-    let statusBox = document.getElementById('llm-translation-status');
-    if (statusBox) {
-      const percent = Math.round((current / total) * 100);
-      statusBox.innerHTML = `
-        <div style="display: flex; align-items: center;">
-          <div style="width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.1); border-radius: 50%; border-top: 2px solid #4CAF50; animation: llm-translate-spin 1s linear infinite; margin-right: 10px;"></div>
-          <span>Translating webpage... ${percent}% (${current}/${total})</span>
-        </div>
-      `;
+    const statusBox = document.getElementById('llm-translation-status');
+    if (!statusBox) {
+      return;
     }
+    const percent = Math.round((current / total) * 100);
+    statusBox.innerHTML = `
+      <div class="llm-status-row">
+        <div class="llm-status-spinner"></div>
+        <span>正在翻译网页… ${percent}%（${current}/${total}）</span>
+      </div>
+    `;
   }
   
   /**
@@ -543,53 +544,20 @@ Do not add any explanation or additional content.`;
    * 显示翻译进行中提示
    */
   static showTranslationInProgress() {
-    // 创建或更新状态提示框
     let statusBox = document.getElementById('llm-translation-status');
     if (!statusBox) {
       statusBox = document.createElement('div');
       statusBox.id = 'llm-translation-status';
-      statusBox.style.cssText = `
-        position: fixed;
-        top: 10px;
-        right: 10px;
-        background-color: white;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        padding: 10px 15px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        z-index: 10001;
-        font-family: Arial, sans-serif;
-        font-size: 14px;
-        display: flex;
-        align-items: center;
-      `;
       document.body.appendChild(statusBox);
     }
-    
-    // 加载中动画
+
+    statusBox.classList.remove('is-error');
     statusBox.innerHTML = `
-      <div style="width: 16px; height: 16px; border: 2px solid rgba(0,0,0,0.1); border-radius: 50%; border-top: 2px solid #4CAF50; animation: llm-translate-spin 1s linear infinite; margin-right: 10px;"></div>
-      <span>Translating webpage...</span>
+      <div class="llm-status-row">
+        <div class="llm-status-spinner"></div>
+        <span>正在翻译网页…</span>
+      </div>
     `;
-    
-    // 添加动画样式(如果尚未添加)
-    if (!document.getElementById('llm-translate-style')) {
-      const style = document.createElement('style');
-      style.id = 'llm-translate-style';
-      style.textContent = `
-        @keyframes llm-translate-spin {
-          0% { transform: rotate(0deg); }
-          100% { transform: rotate(360deg); }
-        }
-        .llm-translation-label {
-          transition: background-color 0.3s ease;
-        }
-        .llm-translation-label:hover {
-          background-color: rgba(255, 255, 200, 0.98) !important;
-        }
-      `;
-      document.head.appendChild(style);
-    }
   }
   
   /**
@@ -602,43 +570,28 @@ Do not add any explanation or additional content.`;
     if (!statusBox) {
       statusBox = document.createElement('div');
       statusBox.id = 'llm-translation-status';
-      statusBox.style.cssText = `
-        position: fixed;
-        top: 10px;
-        right: 10px;
-        background-color: white;
-        border: 1px solid #ccc;
-        border-radius: 4px;
-        padding: 10px 15px;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.2);
-        z-index: 10001;
-        font-family: Arial, sans-serif;
-        font-size: 14px;
-      `;
       document.body.appendChild(statusBox);
     }
-    
-    // 显示完成或错误消息
-    const icon = isError ? '❌' : '✓';
-    const color = isError ? '#f44336' : '#4CAF50';
+
+    statusBox.classList.toggle('is-error', Boolean(isError));
+    const icon = isError ? '✕' : '✓';
     statusBox.innerHTML = `
-      <div style="display: flex; align-items: center;">
-        <span style="color: ${color}; margin-right: 8px; font-weight: bold;">${icon}</span>
+      <div class="llm-status-row">
+        <span class="llm-status-icon">${icon}</span>
         <span>${message}</span>
       </div>
     `;
-    
-    // 自动隐藏提示
+
     setTimeout(() => {
-      if (statusBox && document.body.contains(statusBox)) {
-        statusBox.style.opacity = '0';
-        statusBox.style.transition = 'opacity 0.5s ease';
-        setTimeout(() => {
-          if (statusBox && document.body.contains(statusBox)) {
-            document.body.removeChild(statusBox);
-          }
-        }, 500);
+      if (!statusBox || !document.body.contains(statusBox)) {
+        return;
       }
+      statusBox.classList.add('is-fading');
+      setTimeout(() => {
+        if (statusBox && document.body.contains(statusBox)) {
+          document.body.removeChild(statusBox);
+        }
+      }, 400);
     }, 3000);
   }
   
@@ -654,11 +607,32 @@ Do not add any explanation or additional content.`;
       }
     });
     
-    // 移除状态框
     const statusBox = document.getElementById('llm-translation-status');
     if (statusBox && document.body.contains(statusBox)) {
       document.body.removeChild(statusBox);
     }
+    document.body.classList.remove('llm-translations-hidden');
+  }
+
+  /**
+   * 切换译文标签的显示/隐藏（显示原文 / 显示译文）
+   * @returns {boolean} 译文当前是否被隐藏
+   */
+  static toggleTranslations() {
+    const hidden = document.body.classList.toggle('llm-translations-hidden');
+    return hidden;
+  }
+
+  /**
+   * 获取网页当前的翻译状态
+   * @returns {{hasTranslations: boolean, hidden: boolean}} 是否已有译文、译文是否被隐藏
+   */
+  static getTranslationState() {
+    const labels = document.querySelectorAll('.llm-translation-label');
+    return {
+      hasTranslations: labels.length > 0,
+      hidden: document.body.classList.contains('llm-translations-hidden')
+    };
   }
   
   /**
@@ -674,7 +648,7 @@ Do not add any explanation or additional content.`;
       const allNodeInfoArray = this.getTranslatableNodes();
       
       if (allNodeInfoArray.length === 0) {
-        this.showTranslationComplete('No translatable text content found');
+        this.showTranslationComplete('未找到可翻译的文本');
         return;
       }
       
@@ -703,7 +677,7 @@ Do not add any explanation or additional content.`;
       for (let i = 0; i < sortedNodes.length; i += batchSize) {
         callCount++;
         if (callCount > maxCallCount) {
-          this.showTranslationComplete('API call limit reached', true);
+          this.showTranslationComplete('已达到接口调用上限', true);
           return;
         }
 
@@ -728,10 +702,10 @@ Do not add any explanation or additional content.`;
       }
       
       // 显示完成提示
-      this.showTranslationComplete(`Translated ${translatedCount} text segments`);
+      this.showTranslationComplete(`已翻译 ${translatedCount} 段文本`);
     } catch (error) {
       console.error('Webpage translation failed:', error);
-      this.showTranslationComplete(`Translation failed: ${error.message}`, true);
+      this.showTranslationComplete(`翻译失败: ${error.message}`, true);
     }
   }
 }

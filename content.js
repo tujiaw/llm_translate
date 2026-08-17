@@ -16,6 +16,8 @@ const CONSTANTS = {
     SHOW_LOADING_POPUP: 'showLoadingPopup',
     TRANSLATE_WEBPAGE: 'translateWebpage',
     CLEAR_WEBPAGE_TRANSLATIONS: 'clearWebpageTranslations',
+    TOGGLE_WEBPAGE_TRANSLATIONS: 'toggleWebpageTranslations',
+    GET_WEBPAGE_TRANSLATION_STATE: 'getWebpageTranslationState',
     PERFORM_TRANSLATION: 'performTranslation'
   },
   SELECTORS: {
@@ -143,7 +145,9 @@ class LLMTranslationContentScript {
         [CONSTANTS.ACTIONS.TRANSLATE]: () => this.handleTranslateMessage(request),
         [CONSTANTS.ACTIONS.SHOW_LOADING_POPUP]: () => this.handleShowLoadingPopup(),
         [CONSTANTS.ACTIONS.TRANSLATE_WEBPAGE]: () => this.handleTranslateWebpage(),
-        [CONSTANTS.ACTIONS.CLEAR_WEBPAGE_TRANSLATIONS]: () => this.handleClearTranslations()
+        [CONSTANTS.ACTIONS.CLEAR_WEBPAGE_TRANSLATIONS]: () => this.handleClearTranslations(),
+        [CONSTANTS.ACTIONS.TOGGLE_WEBPAGE_TRANSLATIONS]: () => this.handleToggleWebpageTranslations(),
+        [CONSTANTS.ACTIONS.GET_WEBPAGE_TRANSLATION_STATE]: () => this.handleGetWebpageTranslationState()
       };
 
       const handler = messageHandlers[request.action];
@@ -189,16 +193,12 @@ class LLMTranslationContentScript {
   /**
    * 处理网页翻译消息
    */
-  async handleTranslateWebpage() {
+  handleTranslateWebpage() {
     console.log('接收到全网页翻译请求');
-    try {
-      await this.services.webpageTranslator.translateWebpage();
-      console.log('全网页翻译已完成');
-      return { success: true };
-    } catch (error) {
+    this.services.webpageTranslator.translateWebpage().catch((error) => {
       console.error('执行全网页翻译时出错:', error);
-      return { success: false, error: error.message };
-    }
+    });
+    return { success: true };
   }
 
   /**
@@ -209,11 +209,44 @@ class LLMTranslationContentScript {
     try {
       this.services.webpageTranslator.clearTranslations();
       console.log('清除翻译已完成');
-      return { success: true };
+      return this.webpageTranslationResult();
     } catch (error) {
       console.error('清除翻译时出错:', error);
-      return { success: false, error: error.message };
+      return { success: false, hasTranslations: false, hidden: false, error: error.message };
     }
+  }
+
+  /**
+   * 处理切换译文显示消息（显示原文 / 显示译文）
+   */
+  handleToggleWebpageTranslations() {
+    console.log('接收到切换译文显示请求');
+    try {
+      this.services.webpageTranslator.toggleTranslations();
+      return this.webpageTranslationResult();
+    } catch (error) {
+      console.error('切换译文显示时出错:', error);
+      return { success: false, hasTranslations: false, hidden: false, error: error.message };
+    }
+  }
+
+  /**
+   * 处理获取网页翻译状态消息
+   */
+  handleGetWebpageTranslationState() {
+    try {
+      return this.webpageTranslationResult();
+    } catch (error) {
+      console.error('获取网页翻译状态时出错:', error);
+      return { success: false, hasTranslations: false, hidden: false, error: error.message };
+    }
+  }
+
+  webpageTranslationResult() {
+    return {
+      success: true,
+      ...this.services.webpageTranslator.getTranslationState()
+    };
   }
 
   /**

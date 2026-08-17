@@ -121,6 +121,28 @@ class Utils {
   }
 
   /**
+   * 获取支持的语言列表（中文显示名，用于 popup 目标语言选择）
+   * @returns {Array} 语言选项列表，包含code和name(中文)
+   */
+  static getSupportedLanguages() {
+    return [
+      { code: 'zh', name: '简体中文' },
+      { code: 'en', name: 'English' },
+      { code: 'ja', name: '日本語' },
+      { code: 'ko', name: '한국어' },
+      { code: 'ru', name: 'Русский' },
+      { code: 'fr', name: 'Français' },
+      { code: 'de', name: 'Deutsch' },
+      { code: 'es', name: 'Español' },
+      { code: 'it', name: 'Italiano' },
+      { code: 'ar', name: 'العربية' },
+      { code: 'hi', name: 'हिन्दी' },
+      { code: 'he', name: 'עברית' },
+      { code: 'th', name: 'ไทย' }
+    ];
+  }
+
+  /**
    * 获取支持的语言列表(英文表示)
    * @returns {Array} 语言选项列表，包含code和name(英文)
    */

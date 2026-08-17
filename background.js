@@ -354,8 +354,8 @@ async function performTranslation(text, tabId) {
     logConfigInfo(config, '翻译请求加载的');
 
     const entry = ConfigService.getCurrentModel(config);
-    if (!entry || !(entry.apiKey || '').trim()) {
-      const errorMessage = '请先在扩展设置中添加模型并填写 API Key。';
+    if (!ConfigService.isModelReady(entry)) {
+      const errorMessage = '请先在扩展中选择服务商并填写 API Key，建议先点「测试连接」。';
       sendMessageToTab(tabId, CONSTANTS.ACTIONS.TRANSLATE, text, errorMessage, true);
       return;
     }

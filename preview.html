@@ -2,8 +2,107 @@
 <html lang="zh-CN">
 <head>
   <meta charset="utf-8">
-  <title>LLM Translation</title>
+  <title>LLM Translation Preview</title>
   <link rel="stylesheet" href="popup.css">
+  <script>
+    // ===== 临时预览用 chrome API 桩（仅用于本地视觉验证）=====
+    window.chrome = {
+      runtime: {
+        getURL: function (path) { return path; },
+        lastError: null
+      },
+      storage: {
+        local: {
+          _data: {
+            nativeLanguage: 'zh',
+            currentModelId: 'm1',
+            models: [{
+              id: 'volcengine::doubao-pro-32k',
+              providerId: 'volcengine',
+              baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
+              model: 'doubao-pro-32k',
+              apiKey: 'sk-test-123',
+              bodyJson: '{}'
+            }]
+          },
+          get: function (defaults, cb) {
+            if (typeof defaults === 'function') { cb = defaults; defaults = {}; }
+            const result = {};
+            for (const k of Object.keys(defaults)) {
+              result[k] = (k in this._data) ? this._data[k] : defaults[k];
+            }
+            window.chrome.runtime.lastError = null;
+            cb(result);
+          },
+          set: function (payload, cb) {
+            Object.assign(this._data, payload);
+            window.chrome.runtime.lastError = null;
+            if (cb) cb();
+          }
+        },
+        sync: {
+          _data: {},
+          get: function (defaults, cb) {
+            if (typeof defaults === 'function') { cb = defaults; defaults = {}; }
+            const result = {};
+            for (const k of Object.keys(defaults)) {
+              result[k] = (k in this._data) ? this._data[k] : defaults[k];
+            }
+            window.chrome.runtime.lastError = null;
+            cb(result);
+          },
+          set: function (payload, cb) {
+            Object.assign(this._data, payload);
+            window.chrome.runtime.lastError = null;
+            if (cb) cb();
+          }
+        }
+      },
+      tabs: {
+        query: async function () { return [{ id: 1 }]; },
+        sendMessage: async function (tabId, message) {
+          const action = message && message.action;
+          if (action === 'getSelectedText') return { selectedText: 'This is a sample text to translate.' };
+          if (action === 'getWebpageTranslationState') return { hasTranslations: false, hidden: false };
+          if (action === 'translateWebpage') return { success: true };
+          if (action === 'toggleWebpageTranslations') return { success: true, hidden: true };
+          if (action === 'clearWebpageTranslations') return { success: true };
+          return { success: true };
+        }
+      }
+    };
+
+    // ===== 根据 URL 参数应用预览状态（仅用于截图验证）=====
+    window.addEventListener('load', function () {
+      const params = new URLSearchParams(location.search);
+      const timer = setInterval(function () {
+        const nameEl = document.getElementById('modelBarName');
+        const langEl = document.getElementById('nativeLanguage');
+        if (!nameEl || !langEl || langEl.options.length === 0) return;
+        clearInterval(timer);
+
+        if (params.get('filled')) {
+          const input = document.getElementById('inputText');
+          input.value = 'Hello, this is an example sentence to translate.';
+          input.dispatchEvent(new Event('input', { bubbles: true }));
+          if (params.get('output')) {
+            const out = document.getElementById('outputText');
+            out.value = '你好，这是一个用于展示译文区域样式的示例句子。';
+            document.getElementById('copyBtn').classList.remove('hidden');
+          }
+        }
+        if (params.get('view') === 'settings') {
+          document.getElementById('modelBar').click();
+          if (params.get('advanced')) {
+            document.getElementById('advancedJson').open = true;
+          }
+        }
+        if (params.get('mode') === 'page') {
+          document.getElementById('pageModeBtn').click();
+        }
+      }, 100);
+    });
+  </script>
 </head>
 <body>
   <div class="container">
