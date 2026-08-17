@@ -90,10 +90,11 @@ class WebpageTranslatorService {
   }
 
   /**
-   * 获取页面中所有可翻译的文本节点
-   * @returns {Array<{node: Node, text: string, id: string}>} 可翻译节点数组
+   * 获取页面中所有可翻译单元。对照模式按段落聚合，替换模式保留文本节点粒度。
+   * @param {'bilingual'|'replace'} displayMode - 译文展示方式
+   * @returns {Array<{node: Node, text: string, id: string}>} 可翻译单元数组
    */
-  static getTranslatableNodes() {
+  static getTranslatableNodes(displayMode = 'bilingual') {
     const excludeTags = ['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'HEAD', 'META', 'TITLE', 'LINK'];
     const excludeClasses = [
       'llm-translation-label',
@@ -185,7 +186,8 @@ class WebpageTranslatorService {
           // 排除特定标签和类
           if (!parent ||
               excludeTags.includes(parent.tagName) ||
-              excludeClasses.some((cls) => parent.classList.contains(cls))) {
+              excludeClasses.some((cls) => parent.classList.contains(cls)) ||
+              parent.closest('.llm-translation-source')) {
             return NodeFilter.FILTER_REJECT;
           }
 
@@ -312,18 +314,63 @@ class WebpageTranslatorService {
       return symbolRatio > 0.1;  // 如果特殊符号比例过高，可能是代码
     }
     
-    // 收集符合条件的节点
+    const paragraphSelector = [
+      'p', 'li', 'blockquote', 'figcaption', 'dd', 'dt', 'td', 'th',
+      'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'label'
+    ].join(',');
+    const findParagraphContainer = (textNode) => {
+      const parent = textNode.parentElement;
+      const semanticContainer = parent.closest(paragraphSelector);
+      if (semanticContainer) {
+        return semanticContainer;
+      }
+
+      let current = parent;
+      while (current && current !== document.body) {
+        const display = window.getComputedStyle(current).display;
+        if (display !== 'inline' && display !== 'contents') {
+          return current;
+        }
+        current = current.parentElement;
+      }
+      return parent;
+    };
+
+    // 收集符合条件的节点；对照模式将同一段落中的文本合并为一个翻译单元。
     let node;
     let nodeIndex = 0;
+    const paragraphGroups = new Map();
     while ((node = walker.nextNode())) {
       // 使用与筛选一致的归一化文本，保证后续去重匹配
       const text = normalizeText(node.textContent);
-      if (text) {
+      if (!text) {
+        continue;
+      }
+
+      if (displayMode === 'replace') {
         translateNodes.push({
-          node: node,
-          text: text,
+          node,
+          text,
           id: `n${nodeIndex++}`
         });
+        continue;
+      }
+
+      const container = findParagraphContainer(node);
+      const existing = paragraphGroups.get(container);
+      if (existing) {
+        existing.textParts.push(text);
+      } else {
+        paragraphGroups.set(container, { node: container, textParts: [text] });
+      }
+    }
+
+    if (displayMode !== 'replace') {
+      for (const group of paragraphGroups.values()) {
+        const text = normalizeText(group.textParts.join(' '));
+        if (text) {
+          translateNodes.push({ node: group.node, text, id: `n${nodeIndex++}` });
+        }
       }
     }
 
@@ -571,33 +618,20 @@ Do not add any explanation or additional content.`;
           continue;
         }
 
-        // 为原文本节点的父元素添加相对定位
-        const parent = nodeInfo.node.parentElement;
-        const originalPosition = window.getComputedStyle(parent).position;
-        if (originalPosition === 'static') {
-          parent.style.position = 'relative';
+        const sourceElement = nodeInfo.node.nodeType === Node.ELEMENT_NODE
+          ? nodeInfo.node
+          : nodeInfo.node.parentElement;
+        if (!sourceElement || sourceElement.querySelector(':scope > .llm-translation-label')) {
+          continue;
         }
-        
-        // 创建翻译标签
-        const translationLabel = document.createElement('div');
+
+        // 在完整原文段落末尾追加轻量译文，不改变原网页文字样式。
+        const translationLabel = document.createElement('span');
         translationLabel.className = 'llm-translation-label';
         translationLabel.textContent = translation;
-        translationLabel.dataset.translationId = nodeInfo.id; // 添加ID引用
-        translationLabel.style.cssText = `
-          color: #333;
-          background-color: rgba(255, 255, 240, 0.95);
-          font-size: 13px;
-          line-height: 1.4;
-          padding: 3px 5px;
-          margin-top: 3px;
-          border-left: 2px solid #4CAF50;
-          font-family: Arial, sans-serif;
-          word-wrap: break-word;
-          z-index: 10000;
-        `;
-        
-        // 插入到原文本之后
-        parent.insertBefore(translationLabel, nodeInfo.node.nextSibling);
+        translationLabel.dataset.translationId = nodeInfo.id;
+        sourceElement.classList.add('llm-translation-source');
+        sourceElement.appendChild(translationLabel);
       } catch (error) {
         console.error('Error displaying translation:', error, nodeInfo);
       }
@@ -618,8 +652,10 @@ Do not add any explanation or additional content.`;
     
     // 计算每个节点的优先级
     return [...nodes].sort((a, b) => {
-      const rectA = a.node.parentElement.getBoundingClientRect();
-      const rectB = b.node.parentElement.getBoundingClientRect();
+      const elementA = a.node.nodeType === Node.ELEMENT_NODE ? a.node : a.node.parentElement;
+      const elementB = b.node.nodeType === Node.ELEMENT_NODE ? b.node : b.node.parentElement;
+      const rectA = elementA.getBoundingClientRect();
+      const rectB = elementB.getBoundingClientRect();
       
       // 检查是否在视口内
       const aInViewport = rectA.top < viewportHeight && rectA.bottom > 0 && 
@@ -817,6 +853,9 @@ Do not add any explanation or additional content.`;
         label.parentNode.removeChild(label);
       }
     });
+    document.querySelectorAll('.llm-translation-source').forEach((source) => {
+      source.classList.remove('llm-translation-source');
+    });
 
     for (const [node, text] of this.replacedTextNodes) {
       node.textContent = text.original;
@@ -870,17 +909,17 @@ Do not add any explanation or additional content.`;
       // 显示翻译中提示
       this.showTranslationInProgress();
 
-      // 获取所有可翻译节点
-      const allNodeInfoArray = this.getTranslatableNodes();
+      // 加载并确保配置完整性
+      let config = await this.loadConfig();
+      config = this.ensureCompleteConfig(config);
+
+      // 对照模式按段落聚合，直接替换模式保持文本节点粒度。
+      const allNodeInfoArray = this.getTranslatableNodes(config.translationDisplayMode);
 
       if (allNodeInfoArray.length === 0) {
         this.showTranslationComplete('未找到可翻译的文本');
         return;
       }
-
-      // 加载并确保配置完整性
-      let config = await this.loadConfig();
-      config = this.ensureCompleteConfig(config);
 
       // 将节点按可视区域排序
       const sortedNodes = this.sortNodesByVisibility(allNodeInfoArray);
