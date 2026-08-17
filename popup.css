@@ -185,7 +185,8 @@ body {
 
 select,
 input[type="text"],
-input[type="password"] {
+input[type="password"],
+input[type="number"] {
   width: 100%;
   padding: 8px 10px;
   border: 1px solid var(--border);
@@ -195,6 +196,11 @@ input[type="password"] {
   font-family: inherit;
   font-size: 13px;
   transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+input[type="number"] {
+  width: 72px;
+  text-align: center;
 }
 
 select {

@@ -54,6 +54,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         togglePageBtn: document.getElementById('togglePageBtn'),
         clearWebpageBtn: document.getElementById('clearWebpageBtn'),
         pageStatus: document.getElementById('pageStatus'),
+        maxApiCalls: document.getElementById('maxApiCalls'),
         // 目标语言
         nativeLanguage: document.getElementById('nativeLanguage'),
         // 模型栏
@@ -291,6 +292,10 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         if (config.nativeLanguage) {
           elements.nativeLanguage.value = config.nativeLanguage;
+        }
+
+        if (config.maxApiCalls) {
+          elements.maxApiCalls.value = config.maxApiCalls;
         }
 
         refreshModelBar();
@@ -678,7 +683,8 @@ document.addEventListener('DOMContentLoaded', async function() {
           ...config,
           nativeLanguage: elements.nativeLanguage.value,
           models: cloneModels(workingModels),
-          currentModelId: selectedModelId
+          currentModelId: selectedModelId,
+          maxApiCalls: Math.max(1, parseInt(elements.maxApiCalls.value, 10) || 10)
         });
         return true;
       } catch (error) {

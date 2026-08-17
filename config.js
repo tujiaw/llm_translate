@@ -3,7 +3,8 @@
 const DEFAULT_CONFIG = {
   nativeLanguage: 'zh',
   models: [],
-  currentModelId: ''
+  currentModelId: '',
+  maxApiCalls: 10
 };
 
 const MODEL_PROVIDERS = [
@@ -269,7 +270,10 @@ class ConfigService {
     return {
       nativeLanguage: config.nativeLanguage || DEFAULT_CONFIG.nativeLanguage,
       models,
-      currentModelId: resolvedCurrent
+      currentModelId: resolvedCurrent,
+      maxApiCalls: (config.maxApiCalls && config.maxApiCalls > 0)
+        ? config.maxApiCalls
+        : DEFAULT_CONFIG.maxApiCalls
     };
   }
 
@@ -302,7 +306,8 @@ class ConfigService {
     return {
       nativeLanguage: normalized.nativeLanguage,
       models: normalized.models,
-      currentModelId: normalized.currentModelId
+      currentModelId: normalized.currentModelId,
+      maxApiCalls: normalized.maxApiCalls
     };
   }
 

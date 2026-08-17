@@ -26,67 +26,102 @@ class WebpageTranslatorService {
     // 代码容器的标识符
     const codeContainers = ['PRE', 'CODE', 'SAMP', 'KBD'];
     const translateNodes = [];
-    
+
+    // 预编译代码相关类名的匹配正则（替代每个祖先都 Array.from(classList)）
+    const codeClassPattern = codeClasses
+      .map((cls) => cls.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+      .join('|');
+    const codeClassRe = new RegExp(codeClassPattern);
+
+    // 判断单个元素自身是否带代码标识（容器 / 代码类 / data 属性）
+    const isBlockedElement = (el) => {
+      if (codeContainers.includes(el.nodeName)) {
+        return true;
+      }
+      if (el.classList && codeClassRe.test(el.className)) {
+        return true;
+      }
+      if (el.dataset &&
+          (el.dataset.code != null ||
+           el.dataset.language != null ||
+           el.dataset.syntax != null)) {
+        return true;
+      }
+      return false;
+    };
+
+    // 缓存"元素是否位于代码块内"的结果，每条祖先链只扫描一次
+    const insideCodeBlockCache = new WeakMap();
+    const isInsideCodeBlock = (el) => {
+      if (!el) {
+        return false;
+      }
+      if (insideCodeBlockCache.has(el)) {
+        return insideCodeBlockCache.get(el);
+      }
+      let result = false;
+      let ancestor = el;
+      while (ancestor) {
+        if (ancestor.nodeType === Node.ELEMENT_NODE && isBlockedElement(ancestor)) {
+          result = true;
+          break;
+        }
+        ancestor = ancestor.parentElement;
+      }
+      insideCodeBlockCache.set(el, result);
+      return result;
+    };
+
+    // 文本节点后是否紧跟译文标签（O(1)，替代每节点 querySelector 全子树搜索）
+    const isTranslatedNode = (node) => {
+      const next = node.nextSibling;
+      return Boolean(
+        next &&
+        next.nodeType === Node.ELEMENT_NODE &&
+        next.classList &&
+        next.classList.contains('llm-translation-label')
+      );
+    };
+
+    // 折叠空白（含换行），保证"一行一节点"的传输契约
+    const normalizeText = (text) => text.replace(/\s+/g, ' ').trim();
+
     // 遍历文档中的所有文本节点
     const walker = document.createTreeWalker(
       document.body,
-      
       NodeFilter.SHOW_TEXT,
       {
         acceptNode: function(node) {
           const parent = node.parentElement;
-          
+
           // 排除特定标签和类
-          if (!parent || 
-              excludeTags.includes(parent.tagName) || 
-              excludeClasses.some(cls => parent.classList.contains(cls))) {
+          if (!parent ||
+              excludeTags.includes(parent.tagName) ||
+              excludeClasses.some((cls) => parent.classList.contains(cls))) {
             return NodeFilter.FILTER_REJECT;
           }
-          
-          // 排除空文本或只有空格的文本
-          const text = node.textContent.trim();
+
+          // 排除空文本或只有空格的文本（折叠空白后判断）
+          const text = normalizeText(node.textContent);
           if (!text || text.length < 2) {
             return NodeFilter.FILTER_REJECT;
           }
-          
-          // 排除已翻译的节点
-          if (parent.querySelector('.llm-translation-label')) {
+
+          // 排除已翻译的节点（译文标签紧跟其后）
+          if (isTranslatedNode(node)) {
             return NodeFilter.FILTER_REJECT;
           }
-          
-          // 排除代码块
-          // 1. 检查是否在<pre>、<code>等代码容器标签内
-          let ancestor = parent;
-          while (ancestor) {
-            if (codeContainers.includes(ancestor.nodeName)) {
-              return NodeFilter.FILTER_REJECT;
-            }
-            
-            // 2. 检查是否有代码相关类名
-            if (ancestor.classList) {
-              for (const cls of codeClasses) {
-                if (Array.from(ancestor.classList).some(className => className.includes(cls))) {
-                  return NodeFilter.FILTER_REJECT;
-                }
-              }
-            }
-            
-            // 3. 检查自定义data属性表示代码
-            if (ancestor.dataset && 
-               (ancestor.dataset.code != null || 
-                ancestor.dataset.language != null || 
-                ancestor.dataset.syntax != null)) {
-              return NodeFilter.FILTER_REJECT;
-            }
-            
-            ancestor = ancestor.parentElement;
+
+          // 排除代码块（祖先链带代码标识）
+          if (isInsideCodeBlock(parent)) {
+            return NodeFilter.FILTER_REJECT;
           }
-          
-          // 4. 检查文本是否像代码（基于启发式规则）
+
+          // 排除文本本身像代码的节点
           if (isProbablyCode(text)) {
             return NodeFilter.FILTER_REJECT;
           }
-          
+
           return NodeFilter.FILTER_ACCEPT;
         }
       }
@@ -164,15 +199,16 @@ class WebpageTranslatorService {
         /SELECT\s+.+\s+FROM\s+.+/i
       ];
       
-      // 检查是否包含代码模式
-      const codePatternMatches = codePatterns.filter(pattern => pattern.test(text)).length;
-      // 对较短文本，只需匹配一个模式即可
-      if (text.length < 100 && codePatternMatches >= 1) {
-        return true;
-      }
-      // 对较长文本，需要匹配更多模式
-      if (codePatternMatches >= 2) {
-        return true;
+      // 检查是否包含代码模式（命中阈值即短路，避免 19 个正则全部跑完）
+      const matchThreshold = text.length < 100 ? 1 : 2;
+      let codePatternMatches = 0;
+      for (const pattern of codePatterns) {
+        if (pattern.test(text)) {
+          codePatternMatches++;
+          if (codePatternMatches >= matchThreshold) {
+            return true;
+          }
+        }
       }
       
       // 检查特殊符号比例
@@ -191,20 +227,18 @@ class WebpageTranslatorService {
     // 收集符合条件的节点
     let node;
     let nodeIndex = 0;
-    while (node = walker.nextNode()) {
-      const text = node.textContent.trim();
+    while ((node = walker.nextNode())) {
+      // 使用与筛选一致的归一化文本，保证后续去重匹配
+      const text = normalizeText(node.textContent);
       if (text) {
-        // 为每个节点生成简短的唯一ID
-        const nodeId = `ningto${nodeIndex++}`;
-        
         translateNodes.push({
           node: node,
           text: text,
-          id: nodeId
+          id: `n${nodeIndex++}`
         });
       }
     }
-    
+
     return translateNodes;
   }
   
@@ -531,6 +565,7 @@ Do not add any explanation or additional content.`;
   static ensureCompleteConfig(config) {
     config = config || {};
     config.nativeLanguage = config.nativeLanguage || 'zh';
+    config.maxApiCalls = (config.maxApiCalls && config.maxApiCalls > 0) ? config.maxApiCalls : 10;
     if (!Array.isArray(config.models)) {
       config.models = [];
     }
@@ -643,64 +678,128 @@ Do not add any explanation or additional content.`;
     try {
       // 显示翻译中提示
       this.showTranslationInProgress();
-      
+
       // 获取所有可翻译节点
       const allNodeInfoArray = this.getTranslatableNodes();
-      
+
       if (allNodeInfoArray.length === 0) {
         this.showTranslationComplete('未找到可翻译的文本');
         return;
       }
-      
-      // 加载配置
+
+      // 加载并确保配置完整性
       let config = await this.loadConfig();
-      
-      // 确保配置完整性
       config = this.ensureCompleteConfig(config);
-      
+
       // 将节点按可视区域排序
       const sortedNodes = this.sortNodesByVisibility(allNodeInfoArray);
-      
-      // 分批次翻译
-      const maxCallCount = 10; // 最大API调用次数
-      const minBatchSize = 60; // 最小批次大小
-      const maxBatchSize = 100; // 最大批次大小
-      let batchSize = minBatchSize;
-      let translatedCount = 0;
-      let callCount = 0;
-      
-      // 根据节点总数和最大调用次数动态调整批次大小
-      if (sortedNodes.length > minBatchSize * maxCallCount) {
-        batchSize = Math.min(maxBatchSize, Math.floor(sortedNodes.length / maxCallCount));
+
+      // 去重：相同文本只翻译一次，结果再展开回所有节点
+      const textToNodes = new Map();
+      for (const nodeInfo of sortedNodes) {
+        const list = textToNodes.get(nodeInfo.text);
+        if (list) {
+          list.push(nodeInfo);
+        } else {
+          textToNodes.set(nodeInfo.text, [nodeInfo]);
+        }
       }
-      
-      for (let i = 0; i < sortedNodes.length; i += batchSize) {
-        callCount++;
-        if (callCount > maxCallCount) {
-          this.showTranslationComplete('已达到接口调用上限', true);
+      const uniqueItems = Array.from(textToNodes.entries()).map(([text, nodes]) => ({
+        id: nodes[0].id,
+        text
+      }));
+
+      // 分批参数（接口调用上限可配置）
+      const maxCallCount = config.maxApiCalls || 10;
+      const maxBatchSize = 100; // 每批最大节点数
+      const defaultBatchTokens = 2000; // 每批估算 token 上限
+      const estimateTokens = (text) => Math.ceil(text.length / 4);
+
+      // 总量过大时上调批次 token 预算，尽量在 maxCallCount 次内完成
+      let batchTokens = defaultBatchTokens;
+      const totalTokens = uniqueItems.reduce((sum, item) => sum + estimateTokens(item.text), 0);
+      if (totalTokens > defaultBatchTokens * maxCallCount) {
+        batchTokens = Math.ceil(totalTokens / maxCallCount);
+      }
+
+      // 按 token 预算 + 节点数上限分批
+      const batches = [];
+      let current = [];
+      let currentTokens = 0;
+      for (const item of uniqueItems) {
+        const itemTokens = estimateTokens(item.text);
+        const hitsTokenCap = current.length > 0 && currentTokens + itemTokens > batchTokens;
+        const hitsNodeCap = current.length >= maxBatchSize;
+        if (hitsTokenCap || hitsNodeCap) {
+          batches.push(current);
+          current = [];
+          currentTokens = 0;
+        }
+        current.push(item);
+        currentTokens += itemTokens;
+      }
+      if (current.length > 0) {
+        batches.push(current);
+      }
+
+      // 并发翻译（保留请求间隔与调用上限）
+      const MAX_CONCURRENT = 2;
+      let callCount = 0;
+      let translatedCount = 0;
+      let callLimitReached = false;
+      let nextBatchIndex = 0;
+      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+      const translateBatch = async (index) => {
+        if (callCount >= maxCallCount) {
+          callLimitReached = true;
           return;
         }
+        callCount++;
 
-        // 获取当前批次的节点
-        const batchNodes = sortedNodes.slice(i, i + batchSize);
-        
-        // 更新进度提示
-        this.updateTranslationProgress(i, sortedNodes.length);
-        
-        // 批量翻译
+        const batchNodes = batches[index];
         const translationResults = await this.batchTranslate(batchNodes, config);
-        
-        // 显示翻译结果
-        this.displayTranslations(batchNodes, translationResults);
-        
-        translatedCount += batchNodes.length;
-        
-        // 短暂延迟，避免API限流
-        if (i + batchSize < sortedNodes.length) {
-          await new Promise(resolve => setTimeout(resolve, 300));
+
+        // 把去重后的翻译结果展开回当前批次的所有原始节点
+        const idToTranslation = new Map(translationResults.map((r) => [r.id, r.translation]));
+        const batchRawNodes = [];
+        const expandedTranslations = [];
+        for (const item of batchNodes) {
+          const nodes = textToNodes.get(item.text) || [];
+          batchRawNodes.push(...nodes);
+          const translation = idToTranslation.get(item.id);
+          if (translation) {
+            for (const nodeInfo of nodes) {
+              expandedTranslations.push({ id: nodeInfo.id, translation });
+            }
+          }
         }
+
+        this.displayTranslations(batchRawNodes, expandedTranslations);
+
+        translatedCount += batchRawNodes.length;
+        this.updateTranslationProgress(translatedCount, sortedNodes.length);
+      };
+
+      const worker = async () => {
+        while (nextBatchIndex < batches.length) {
+          if (callCount >= maxCallCount) {
+            callLimitReached = true;
+            break;
+          }
+          const index = nextBatchIndex++;
+          await sleep(300);
+          await translateBatch(index);
+        }
+      };
+
+      await Promise.all(Array.from({ length: MAX_CONCURRENT }, () => worker()));
+
+      if (callLimitReached) {
+        this.showTranslationComplete('已达到接口调用上限', true);
+        return;
       }
-      
+
       // 显示完成提示
       this.showTranslationComplete(`已翻译 ${translatedCount} 段文本`);
     } catch (error) {
