@@ -9,13 +9,98 @@ import ConfigService from './config.js';
  * 网页翻译服务类 - 提供全网页翻译功能
  */
 class WebpageTranslatorService {
+  static activeTranslationController = null;
+  static replacedTextNodes = new Map();
+
+  /**
+   * 粗略估算文本 token：中日韩字符约 1 token，其余字符约 4 字符/token。
+   * @param {string} text - 待估算文本
+   * @returns {number} 估算 token 数
+   */
+  static estimateTokens(text) {
+    let cjkCount = 0;
+    let otherCount = 0;
+    for (const char of text || '') {
+      if (/\p{Script=Han}|\p{Script=Hiragana}|\p{Script=Katakana}|\p{Script=Hangul}/u.test(char)) {
+        cjkCount++;
+      } else {
+        otherCount++;
+      }
+    }
+    return Math.max(1, cjkCount + Math.ceil(otherCount / 4));
+  }
+
+  /**
+   * 将条目均衡分配到固定数量的批次，并限制每批节点数。
+   * @param {Array<{text: string, id: string}>} items - 去重后的文本条目
+   * @param {number} batchCount - 目标批次数
+   * @param {number} maxBatchSize - 每批最大节点数
+   * @returns {Array<Array<{text: string, id: string}>>} 均衡后的批次
+   */
+  static createBalancedBatches(items, batchCount, maxBatchSize) {
+    const batches = Array.from({ length: batchCount }, () => ({ items: [], tokens: 0 }));
+
+    for (const item of items) {
+      let target = null;
+      for (const batch of batches) {
+        if (batch.items.length >= maxBatchSize) {
+          continue;
+        }
+        if (!target || batch.tokens < target.tokens) {
+          target = batch;
+        }
+      }
+      if (!target) {
+        break;
+      }
+      target.items.push(item);
+      target.tokens += this.estimateTokens(item.text);
+    }
+
+    return batches.map((batch) => batch.items).filter((batch) => batch.length > 0);
+  }
+
+  /**
+   * 支持 AbortSignal 的等待，用于限流后的退避重试。
+   * @param {number} ms - 等待毫秒数
+   * @param {AbortSignal} signal - 取消信号
+   * @returns {Promise<void>}
+   */
+  static waitForRetry(ms, signal) {
+    return new Promise((resolve, reject) => {
+      if (signal?.aborted) {
+        const error = new Error('网页翻译已终止');
+        error.name = 'AbortError';
+        reject(error);
+        return;
+      }
+
+      const timer = setTimeout(() => {
+        signal?.removeEventListener('abort', onAbort);
+        resolve();
+      }, ms);
+      const onAbort = () => {
+        clearTimeout(timer);
+        const error = new Error('网页翻译已终止');
+        error.name = 'AbortError';
+        reject(error);
+      };
+      signal?.addEventListener('abort', onAbort, { once: true });
+    });
+  }
+
   /**
    * 获取页面中所有可翻译的文本节点
    * @returns {Array<{node: Node, text: string, id: string}>} 可翻译节点数组
    */
   static getTranslatableNodes() {
     const excludeTags = ['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'HEAD', 'META', 'TITLE', 'LINK'];
-    const excludeClasses = ['llm-translation-label', 'llm-translate-button', 'llm-translation-popup'];
+    const excludeClasses = [
+      'llm-translation-label',
+      'llm-translate-button',
+      'llm-translation-popup',
+      'llm-status-text'
+    ];
     // 代码相关的类名
     const codeClasses = [
       'codeblock', 'hljs', 'prism', 'prettyprint', 'sourceCode', 
@@ -74,6 +159,9 @@ class WebpageTranslatorService {
 
     // 文本节点后是否紧跟译文标签（O(1)，替代每节点 querySelector 全子树搜索）
     const isTranslatedNode = (node) => {
+      if (this.replacedTextNodes.has(node)) {
+        return true;
+      }
       const next = node.nextSibling;
       return Boolean(
         next &&
@@ -246,9 +334,11 @@ class WebpageTranslatorService {
    * 批量翻译文本
    * @param {Array<{text: string, id: string}>} nodeItems - 要翻译的文本和ID数组
    * @param {object} config - 翻译配置
+   * @param {AbortSignal} signal - 用于终止当前网页翻译请求
+   * @param {() => boolean} reserveApiCall - 在每次实际请求前占用调用额度
    * @returns {Promise<Array<{id: string, translation: string}>>} 翻译结果数组
    */
-  static async batchTranslate(nodeItems, config) {
+  static async batchTranslate(nodeItems, config, signal, reserveApiCall = () => true) {
     if (!nodeItems || nodeItems.length === 0) {
       return [];
     }
@@ -314,11 +404,36 @@ Do not add any explanation or additional content.`;
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
-        body: JSON.stringify(requestBody)
+        body: JSON.stringify(requestBody),
+        signal
       };
 
       console.log(`Sending batch translation request to: ${apiEndpoint}`);
-      const response = await fetch(apiEndpoint, apiOptions);
+      const maxRetries = 2;
+      let response;
+      for (let attempt = 0; attempt <= maxRetries; attempt++) {
+        if (!reserveApiCall()) {
+          if (response) {
+            break;
+          }
+          const error = new Error('已达到接口调用上限');
+          error.code = 'API_CALL_LIMIT_REACHED';
+          throw error;
+        }
+        response = await fetch(apiEndpoint, apiOptions);
+        const retryable = response.status === 429 || response.status >= 500;
+        if (!retryable || attempt === maxRetries) {
+          break;
+        }
+        const retryDelay = 500 * (2 ** attempt);
+        console.warn(`API request returned ${response.status}; retrying in ${retryDelay}ms`);
+        try {
+          await response.body?.cancel();
+        } catch {
+          // 忽略释放响应体失败，仍按计划退避重试。
+        }
+        await this.waitForRetry(retryDelay, signal);
+      }
       
       if (!response.ok) {
         let errorMessage = '';
@@ -403,6 +518,9 @@ Do not add any explanation or additional content.`;
       
       return translationResults;
     } catch (error) {
+      if (signal?.aborted || error?.name === 'AbortError' || error?.code === 'API_CALL_LIMIT_REACHED') {
+        throw error;
+      }
       console.error('Batch translation error:', error);
       // 返回错误信息数组
       return nodeItems.map(item => ({
@@ -416,8 +534,9 @@ Do not add any explanation or additional content.`;
    * 在网页中显示翻译结果
    * @param {Array<{node: Node, text: string, id: string}>} nodes - 节点信息数组 
    * @param {Array<{id: string, translation: string}>} translations - 翻译结果数组
+   * @param {'bilingual'|'replace'} displayMode - 译文展示方式
    */
-  static displayTranslations(nodes, translations) {
+  static displayTranslations(nodes, translations, displayMode = 'bilingual') {
     if (!nodes || !translations) {
       console.error('节点数组或翻译数组为空', nodes?.length, translations?.length);
       return;
@@ -439,6 +558,19 @@ Do not add any explanation or additional content.`;
       }
       
       try {
+        if (displayMode === 'replace') {
+          const originalText = nodeInfo.node.textContent || '';
+          const leadingWhitespace = originalText.match(/^\s*/)?.[0] || '';
+          const trailingWhitespace = originalText.match(/\s*$/)?.[0] || '';
+          const translatedText = `${leadingWhitespace}${translation}${trailingWhitespace}`;
+          this.replacedTextNodes.set(nodeInfo.node, {
+            original: originalText,
+            translation: translatedText
+          });
+          nodeInfo.node.textContent = translatedText;
+          continue;
+        }
+
         // 为原文本节点的父元素添加相对定位
         const parent = nodeInfo.node.parentElement;
         const originalPosition = window.getComputedStyle(parent).position;
@@ -508,8 +640,12 @@ Do not add any explanation or additional content.`;
    * 更新翻译进度提示
    * @param {number} current - 当前进度
    * @param {number} total - 总数量
+   * @param {number} completedBatches - 已完成批次数
+   * @param {number} totalBatches - 总批次数
+   * @param {number} activeRequests - 当前活动请求数
+   * @param {number} maxConcurrent - 并发上限
    */
-  static updateTranslationProgress(current, total) {
+  static updateTranslationProgress(current, total, completedBatches, totalBatches, activeRequests, maxConcurrent) {
     const statusBox = document.getElementById('llm-translation-status');
     if (!statusBox) {
       return;
@@ -518,9 +654,11 @@ Do not add any explanation or additional content.`;
     statusBox.innerHTML = `
       <div class="llm-status-row">
         <div class="llm-status-spinner"></div>
-        <span>正在翻译网页… ${percent}%（${current}/${total}）</span>
+        <span class="llm-status-text">正在翻译 ${percent}%（批次 ${completedBatches}/${totalBatches}，并行 ${activeRequests}/${maxConcurrent}）</span>
+        <button type="button" class="llm-status-cancel" title="终止翻译" aria-label="终止翻译">×</button>
       </div>
     `;
+    this.bindCancelAction(statusBox);
   }
   
   /**
@@ -565,7 +703,14 @@ Do not add any explanation or additional content.`;
   static ensureCompleteConfig(config) {
     config = config || {};
     config.nativeLanguage = config.nativeLanguage || 'zh';
-    config.maxApiCalls = (config.maxApiCalls && config.maxApiCalls > 0) ? config.maxApiCalls : 10;
+    config.maxApiCalls = Math.min(50, Math.max(1, Number.parseInt(config.maxApiCalls, 10) || 10));
+    config.concurrentApiCalls = Math.min(
+      20,
+      Math.max(1, Number.parseInt(config.concurrentApiCalls, 10) || 3)
+    );
+    config.translationDisplayMode = config.translationDisplayMode === 'replace'
+      ? 'replace'
+      : 'bilingual';
     if (!Array.isArray(config.models)) {
       config.models = [];
     }
@@ -590,9 +735,40 @@ Do not add any explanation or additional content.`;
     statusBox.innerHTML = `
       <div class="llm-status-row">
         <div class="llm-status-spinner"></div>
-        <span>正在翻译网页…</span>
+        <span class="llm-status-text">正在翻译网页…</span>
+        <button type="button" class="llm-status-cancel" title="终止翻译" aria-label="终止翻译">×</button>
       </div>
     `;
+    this.bindCancelAction(statusBox);
+  }
+
+  /**
+   * 绑定进度提示中的终止按钮。
+   * @param {HTMLElement} statusBox - 翻译状态框
+   */
+  static bindCancelAction(statusBox) {
+    const cancelButton = statusBox.querySelector('.llm-status-cancel');
+    if (!cancelButton) {
+      return;
+    }
+    cancelButton.addEventListener('click', () => {
+      cancelButton.disabled = true;
+      const statusText = statusBox.querySelector('.llm-status-text');
+      if (statusText) {
+        statusText.textContent = '正在终止翻译…';
+      }
+      this.cancelTranslation();
+    });
+  }
+
+  /**
+   * 终止当前网页翻译，包括所有正在进行的并行请求。
+   */
+  static cancelTranslation() {
+    const controller = this.activeTranslationController;
+    if (controller && !controller.signal.aborted) {
+      controller.abort();
+    }
   }
   
   /**
@@ -641,6 +817,11 @@ Do not add any explanation or additional content.`;
         label.parentNode.removeChild(label);
       }
     });
+
+    for (const [node, text] of this.replacedTextNodes) {
+      node.textContent = text.original;
+    }
+    this.replacedTextNodes.clear();
     
     const statusBox = document.getElementById('llm-translation-status');
     if (statusBox && document.body.contains(statusBox)) {
@@ -655,6 +836,9 @@ Do not add any explanation or additional content.`;
    */
   static toggleTranslations() {
     const hidden = document.body.classList.toggle('llm-translations-hidden');
+    for (const [node, text] of this.replacedTextNodes) {
+      node.textContent = hidden ? text.original : text.translation;
+    }
     return hidden;
   }
 
@@ -665,7 +849,7 @@ Do not add any explanation or additional content.`;
   static getTranslationState() {
     const labels = document.querySelectorAll('.llm-translation-label');
     return {
-      hasTranslations: labels.length > 0,
+      hasTranslations: labels.length > 0 || this.replacedTextNodes.size > 0,
       hidden: document.body.classList.contains('llm-translations-hidden')
     };
   }
@@ -675,6 +859,13 @@ Do not add any explanation or additional content.`;
    * @returns {Promise<void>}
    */
   static async translateWebpage() {
+    if (this.activeTranslationController && !this.activeTranslationController.signal.aborted) {
+      this.activeTranslationController.abort();
+    }
+    const controller = new AbortController();
+    const { signal } = controller;
+    this.activeTranslationController = controller;
+
     try {
       // 显示翻译中提示
       this.showTranslationInProgress();
@@ -709,91 +900,132 @@ Do not add any explanation or additional content.`;
         text
       }));
 
-      // 分批参数（接口调用上限可配置）
-      const maxCallCount = config.maxApiCalls || 10;
+      // 自适应分批：小页面避免过度拆分，大页面尽量填满并发槽。
+      const maxCallCount = config.maxApiCalls;
       const maxBatchSize = 100; // 每批最大节点数
-      const defaultBatchTokens = 2000; // 每批估算 token 上限
-      const estimateTokens = (text) => Math.ceil(text.length / 4);
+      const targetBatchTokens = 1200;
+      const minParallelBatchTokens = 400;
+      const totalTokens = uniqueItems.reduce(
+        (sum, item) => sum + this.estimateTokens(item.text),
+        0
+      );
+      const tokenDrivenBatchCount = Math.ceil(totalTokens / targetBatchTokens);
+      const usefulParallelSlots = Math.max(1, Math.floor(totalTokens / minParallelBatchTokens));
+      const parallelDrivenBatchCount = Math.min(config.concurrentApiCalls, usefulParallelSlots);
+      const nodeDrivenBatchCount = Math.ceil(uniqueItems.length / maxBatchSize);
+      const desiredBatchCount = Math.min(
+        maxCallCount,
+        uniqueItems.length,
+        Math.max(tokenDrivenBatchCount, parallelDrivenBatchCount, nodeDrivenBatchCount)
+      );
+      const batches = this.createBalancedBatches(uniqueItems, desiredBatchCount, maxBatchSize);
+      const scheduledItemCount = batches.reduce((sum, batch) => sum + batch.length, 0);
 
-      // 总量过大时上调批次 token 预算，尽量在 maxCallCount 次内完成
-      let batchTokens = defaultBatchTokens;
-      const totalTokens = uniqueItems.reduce((sum, item) => sum + estimateTokens(item.text), 0);
-      if (totalTokens > defaultBatchTokens * maxCallCount) {
-        batchTokens = Math.ceil(totalTokens / maxCallCount);
-      }
-
-      // 按 token 预算 + 节点数上限分批
-      const batches = [];
-      let current = [];
-      let currentTokens = 0;
-      for (const item of uniqueItems) {
-        const itemTokens = estimateTokens(item.text);
-        const hitsTokenCap = current.length > 0 && currentTokens + itemTokens > batchTokens;
-        const hitsNodeCap = current.length >= maxBatchSize;
-        if (hitsTokenCap || hitsNodeCap) {
-          batches.push(current);
-          current = [];
-          currentTokens = 0;
-        }
-        current.push(item);
-        currentTokens += itemTokens;
-      }
-      if (current.length > 0) {
-        batches.push(current);
-      }
-
-      // 并发翻译（保留请求间隔与调用上限）
-      const MAX_CONCURRENT = 2;
+      // 固定并发池立即领取批次；仅在服务端限流时退避。
+      const maxConcurrent = Math.min(config.concurrentApiCalls, maxCallCount, batches.length);
+      console.log(
+        `Translation plan: tokens≈${totalTokens}, batches=${batches.length}, concurrency=${maxConcurrent}`
+      );
       let callCount = 0;
       let translatedCount = 0;
-      let callLimitReached = false;
+      let completedBatches = 0;
+      let activeRequests = 0;
+      let callLimitReached = scheduledItemCount < uniqueItems.length;
       let nextBatchIndex = 0;
-      const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+      const reserveApiCall = () => {
+        if (callCount >= maxCallCount) {
+          callLimitReached = true;
+          return false;
+        }
+        callCount++;
+        return true;
+      };
+      const ensureNotCancelled = () => {
+        if (!signal.aborted) {
+          return;
+        }
+        const error = new Error('网页翻译已终止');
+        error.name = 'AbortError';
+        throw error;
+      };
 
       const translateBatch = async (index) => {
+        ensureNotCancelled();
         if (callCount >= maxCallCount) {
           callLimitReached = true;
           return;
         }
-        callCount++;
-
         const batchNodes = batches[index];
-        const translationResults = await this.batchTranslate(batchNodes, config);
+        activeRequests++;
+        this.updateTranslationProgress(
+          translatedCount,
+          sortedNodes.length,
+          completedBatches,
+          batches.length,
+          activeRequests,
+          maxConcurrent
+        );
 
-        // 把去重后的翻译结果展开回当前批次的所有原始节点
-        const idToTranslation = new Map(translationResults.map((r) => [r.id, r.translation]));
-        const batchRawNodes = [];
-        const expandedTranslations = [];
-        for (const item of batchNodes) {
-          const nodes = textToNodes.get(item.text) || [];
-          batchRawNodes.push(...nodes);
-          const translation = idToTranslation.get(item.id);
-          if (translation) {
-            for (const nodeInfo of nodes) {
-              expandedTranslations.push({ id: nodeInfo.id, translation });
+        try {
+          const translationResults = await this.batchTranslate(
+            batchNodes,
+            config,
+            signal,
+            reserveApiCall
+          );
+          ensureNotCancelled();
+
+          // 把去重后的翻译结果展开回当前批次的所有原始节点
+          const idToTranslation = new Map(translationResults.map((r) => [r.id, r.translation]));
+          const batchRawNodes = [];
+          const expandedTranslations = [];
+          for (const item of batchNodes) {
+            const nodes = textToNodes.get(item.text) || [];
+            batchRawNodes.push(...nodes);
+            const translation = idToTranslation.get(item.id);
+            if (translation) {
+              for (const nodeInfo of nodes) {
+                expandedTranslations.push({ id: nodeInfo.id, translation });
+              }
             }
           }
+
+          this.displayTranslations(
+            batchRawNodes,
+            expandedTranslations,
+            config.translationDisplayMode
+          );
+
+          translatedCount += batchRawNodes.length;
+          completedBatches++;
+        } finally {
+          activeRequests--;
+          if (!signal.aborted) {
+            this.updateTranslationProgress(
+              translatedCount,
+              sortedNodes.length,
+              completedBatches,
+              batches.length,
+              activeRequests,
+              maxConcurrent
+            );
+          }
         }
-
-        this.displayTranslations(batchRawNodes, expandedTranslations);
-
-        translatedCount += batchRawNodes.length;
-        this.updateTranslationProgress(translatedCount, sortedNodes.length);
       };
 
       const worker = async () => {
         while (nextBatchIndex < batches.length) {
+          ensureNotCancelled();
           if (callCount >= maxCallCount) {
             callLimitReached = true;
             break;
           }
           const index = nextBatchIndex++;
-          await sleep(300);
           await translateBatch(index);
         }
       };
 
-      await Promise.all(Array.from({ length: MAX_CONCURRENT }, () => worker()));
+      await Promise.all(Array.from({ length: maxConcurrent }, () => worker()));
 
       if (callLimitReached) {
         this.showTranslationComplete('已达到接口调用上限', true);
@@ -803,11 +1035,24 @@ Do not add any explanation or additional content.`;
       // 显示完成提示
       this.showTranslationComplete(`已翻译 ${translatedCount} 段文本`);
     } catch (error) {
-      console.error('Webpage translation failed:', error);
-      this.showTranslationComplete(`翻译失败: ${error.message}`, true);
+      if (signal.aborted || error?.name === 'AbortError') {
+        console.log('Webpage translation cancelled');
+        if (this.activeTranslationController === controller) {
+          this.showTranslationComplete('已终止翻译');
+        }
+      } else if (error?.code === 'API_CALL_LIMIT_REACHED') {
+        this.showTranslationComplete('已达到接口调用上限', true);
+      } else {
+        console.error('Webpage translation failed:', error);
+        this.showTranslationComplete(`翻译失败: ${error.message}`, true);
+      }
+    } finally {
+      if (this.activeTranslationController === controller) {
+        this.activeTranslationController = null;
+      }
     }
   }
 }
 
 // 导出网页翻译服务
-export default WebpageTranslatorService; 
+export default WebpageTranslatorService;

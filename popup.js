@@ -19,7 +19,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     let selectedModelId = '';
     let testAbortController = null;
     let currentMode = 'page';
-    let pagePollTimer = null;
 
     const elements = getDomElements();
 
@@ -35,8 +34,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         // 视图
         mainView: document.getElementById('mainView'),
         settingsView: document.getElementById('settingsView'),
+        translationSettingsView: document.getElementById('translationSettingsView'),
         openSettingsBtn: document.getElementById('openSettingsBtn'),
+        openTranslationSettingsBtn: document.getElementById('openTranslationSettingsBtn'),
         backBtn: document.getElementById('backBtn'),
+        translationSettingsBackBtn: document.getElementById('translationSettingsBackBtn'),
         // 模式切换
         textModeBtn: document.getElementById('textModeBtn'),
         pageModeBtn: document.getElementById('pageModeBtn'),
@@ -54,7 +56,9 @@ document.addEventListener('DOMContentLoaded', async function() {
         togglePageBtn: document.getElementById('togglePageBtn'),
         clearWebpageBtn: document.getElementById('clearWebpageBtn'),
         pageStatus: document.getElementById('pageStatus'),
+        translationDisplayMode: document.getElementById('translationDisplayMode'),
         maxApiCalls: document.getElementById('maxApiCalls'),
+        concurrentApiCalls: document.getElementById('concurrentApiCalls'),
         // 目标语言
         nativeLanguage: document.getElementById('nativeLanguage'),
         // 模型栏
@@ -125,11 +129,20 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     function showView(name) {
       const showSettings = name === 'settings';
-      elements.mainView.classList.toggle('hidden', showSettings);
+      const showTranslationSettings = name === 'translationSettings';
+      elements.mainView.classList.toggle('hidden', showSettings || showTranslationSettings);
       elements.settingsView.classList.toggle('hidden', !showSettings);
-      if (!showSettings) {
+      elements.translationSettingsView.classList.toggle('hidden', !showTranslationSettings);
+      if (!showSettings && !showTranslationSettings) {
         refreshModelBar();
       }
+    }
+
+    function clampSetting(input, fallback, max) {
+      const parsed = Number.parseInt(input.value, 10);
+      const value = Number.isFinite(parsed) ? Math.min(max, Math.max(1, parsed)) : fallback;
+      input.value = String(value);
+      return value;
     }
 
     // ==================== 模式切换 ====================
@@ -297,6 +310,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (config.maxApiCalls) {
           elements.maxApiCalls.value = config.maxApiCalls;
         }
+        elements.concurrentApiCalls.value = config.concurrentApiCalls || 3;
+        elements.translationDisplayMode.value = config.translationDisplayMode || 'bilingual';
 
         refreshModelBar();
 
@@ -341,14 +356,20 @@ document.addEventListener('DOMContentLoaded', async function() {
     function setupEventListeners() {
       // 视图导航
       elements.openSettingsBtn.addEventListener('click', () => showView('settings'));
+      elements.openTranslationSettingsBtn.addEventListener(
+        'click',
+        () => showView('translationSettings')
+      );
       elements.modelBar.addEventListener('click', () => showView('settings'));
       elements.backBtn.addEventListener('click', () => showView('main'));
+      elements.translationSettingsBackBtn.addEventListener('click', () => showView('main'));
 
       document.addEventListener('keydown', (event) => {
         if (event.key !== 'Escape') {
           return;
         }
-        if (!elements.settingsView.classList.contains('hidden')) {
+        if (!elements.settingsView.classList.contains('hidden')
+          || !elements.translationSettingsView.classList.contains('hidden')) {
           showView('main');
         }
       });
@@ -384,6 +405,18 @@ document.addEventListener('DOMContentLoaded', async function() {
       // 目标语言
       elements.nativeLanguage.addEventListener('change', () => {
         saveSettings();
+      });
+
+      elements.translationDisplayMode.addEventListener('change', () => {
+        saveSettings();
+      });
+
+      [elements.maxApiCalls, elements.concurrentApiCalls].forEach((field) => {
+        field.addEventListener('change', () => {
+          const isMaxCalls = field === elements.maxApiCalls;
+          clampSetting(field, isMaxCalls ? 10 : 3, isMaxCalls ? 50 : 20);
+          saveSettings();
+        });
       });
 
       // 模型设置
@@ -684,7 +717,9 @@ document.addEventListener('DOMContentLoaded', async function() {
           nativeLanguage: elements.nativeLanguage.value,
           models: cloneModels(workingModels),
           currentModelId: selectedModelId,
-          maxApiCalls: Math.max(1, parseInt(elements.maxApiCalls.value, 10) || 10)
+          translationDisplayMode: elements.translationDisplayMode.value,
+          maxApiCalls: clampSetting(elements.maxApiCalls, 10, 50),
+          concurrentApiCalls: clampSetting(elements.concurrentApiCalls, 3, 20)
         });
         return true;
       } catch (error) {
@@ -756,7 +791,7 @@ document.addEventListener('DOMContentLoaded', async function() {
           throw new Error((state && state.error) || '翻译请求未成功发送');
         }
 
-        pollPageState();
+        window.close();
       } catch (error) {
         console.error('执行全网页翻译时出错:', error);
         elements.pageStatus.textContent = `翻译失败: ${error.message}`;
@@ -764,27 +799,6 @@ document.addEventListener('DOMContentLoaded', async function() {
       } finally {
         elements.translateWebpageBtn.disabled = false;
       }
-    }
-
-    async function pollPageState(attempts = 40) {
-      clearTimeout(pagePollTimer);
-      if (attempts <= 0) {
-        elements.pageStatus.textContent = '仍在翻译，可在网页右上角查看进度';
-        return;
-      }
-      pagePollTimer = setTimeout(async () => {
-        try {
-          const state = await sendToActiveTab({ action: 'getWebpageTranslationState' });
-          if (state && state.hasTranslations) {
-            applyPageState(state, '翻译完成');
-            return;
-          }
-          elements.pageStatus.textContent = '正在翻译…';
-          pollPageState(attempts - 1);
-        } catch (error) {
-          pollPageState(attempts - 1);
-        }
-      }, 1500);
     }
 
     async function togglePageTranslations() {

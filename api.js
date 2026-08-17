@@ -129,6 +129,52 @@ class ApiService {
     }
   }
 
+  /**
+   * 按服务商使用其支持的参数强制关闭思考模式。
+   * 在自定义 Body 合并后调用，确保用户配置不能意外重新开启思考。
+   * @param {object} entry - 当前模型配置
+   * @param {object} requestBody - 已合并的请求体
+   * @returns {object} 强制关闭思考后的请求体
+   */
+  static disableThinking(entry, requestBody) {
+    const body = requestBody;
+    const providerId = (entry.providerId || 'custom').trim();
+    const modelName = (entry.model || '').trim().toLowerCase();
+
+    // 先移除自定义 Body 中所有可能开启或输出思考内容的字段。
+    delete body.enable_thinking;
+    delete body.thinking;
+    delete body.thinking_budget;
+    delete body.reasoning;
+    delete body.reasoning_effort;
+    delete body.reasoning_format;
+    delete body.include_reasoning;
+
+    if (providerId === 'deepseek') {
+      body.thinking = { type: 'disabled' };
+    } else if (providerId === 'dashscope') {
+      body.enable_thinking = false;
+    } else if (providerId === 'siliconflow') {
+      body.enable_thinking = false;
+    } else if (providerId === 'zhipu') {
+      body.thinking = { type: 'disabled' };
+    } else if (providerId === 'volcengine') {
+      body.thinking = { type: 'disabled' };
+    } else if (providerId === 'moonshot' && /kimi|thinking|reasoner/.test(modelName)) {
+      body.thinking = { type: 'disabled' };
+    } else if (providerId === 'openrouter') {
+      body.reasoning = { effort: 'none' };
+    } else if (providerId === 'ollama' && !/gpt-oss/.test(modelName)) {
+      body.reasoning_effort = 'none';
+    } else if (providerId === 'groq' && /qwen/.test(modelName)) {
+      body.reasoning_effort = 'none';
+    } else if (providerId === 'openai' && /^gpt-5\.(?:[1-9]\d*)/.test(modelName)) {
+      body.reasoning_effort = 'none';
+    }
+
+    return body;
+  }
+
   static mergeChatBody(entry, systemPrompt, userContent) {
     const modelName = entry.model.trim();
     const baseBody = {
@@ -146,7 +192,7 @@ class ApiService {
     merged.model = modelName;
     merged.messages = baseBody.messages;
     merged.stream = false;
-    return merged;
+    return this.disableThinking(entry, merged);
   }
 
   static async createRequestConfig(config, text, isChineseQuery) {
@@ -228,7 +274,6 @@ class ApiService {
     try {
       const message = data?.choices?.[0]?.message;
       const choiceContent = this.extractTextContent(message?.content)
-        || this.extractTextContent(message?.reasoning_content)
         || this.extractTextContent(data?.choices?.[0]?.text);
       if (choiceContent) {
         return choiceContent;
@@ -408,6 +453,7 @@ class ApiService {
       { role: 'user', content: 'Reply with the single word: pong' }
     ];
     requestBody.stream = false;
+    this.disableThinking(entry, requestBody);
 
     const started = Date.now();
     try {

@@ -12,7 +12,10 @@
     <div id="mainView" class="view">
       <header class="popup-header">
         <h1 class="popup-title">LLM Translation</h1>
-        <button type="button" id="openSettingsBtn" class="icon-btn" title="模型设置" aria-label="模型设置">⚙</button>
+        <div class="header-actions">
+          <button type="button" id="openTranslationSettingsBtn" class="icon-btn" title="翻译设置" aria-label="翻译设置">译</button>
+          <button type="button" id="openSettingsBtn" class="icon-btn" title="模型设置" aria-label="模型设置">⚙</button>
+        </div>
       </header>
 
       <!-- 模式切换：文本翻译 / 网页翻译 -->
@@ -53,12 +56,6 @@
       <section id="pagePanel" class="panel">
         <button type="button" id="translateWebpageBtn" class="btn btn-primary btn-block">翻译当前网页</button>
 
-        <div class="field-row">
-          <label class="field-label" for="maxApiCalls">最多 API 调用次数</label>
-          <input type="number" id="maxApiCalls" min="1" max="50" value="10">
-        </div>
-        <p class="field-hint">全网页翻译单次最多发起的模型请求数，批次过多时按此上限截断。</p>
-
         <span class="field-label">翻译后</span>
         <div class="page-actions">
           <button type="button" id="togglePageBtn" class="btn btn-secondary" disabled>显示原文</button>
@@ -78,6 +75,7 @@
           <span class="chevron">›</span>
         </span>
       </button>
+
     </div>
 
     <!-- ============ 模型设置视图 ============ -->
@@ -130,6 +128,29 @@
 
         <button type="button" id="removeModelBtn" class="btn-danger">删除此配置</button>
       </div>
+    </div>
+
+    <!-- ============ 翻译设置视图 ============ -->
+    <div id="translationSettingsView" class="view hidden">
+      <header class="settings-header">
+        <button type="button" id="translationSettingsBackBtn" class="icon-btn" title="返回" aria-label="返回">←</button>
+        <h1 class="popup-title">翻译设置</h1>
+      </header>
+
+      <label class="field-label" for="translationDisplayMode">展示样式</label>
+      <select id="translationDisplayMode">
+        <option value="bilingual">原文与译文对照</option>
+        <option value="replace">直接替换原文</option>
+      </select>
+      <p class="field-hint">直接替换模式类似浏览器网页翻译，可随时切回原文或恢复网页。</p>
+
+      <label class="field-label" for="maxApiCalls">每个网页最多 API 调用次数</label>
+      <input type="number" id="maxApiCalls" min="1" max="50" value="10">
+      <p class="field-hint">范围 1–50。网页内容较多时，超过上限的批次不会继续请求。</p>
+
+      <label class="field-label" for="concurrentApiCalls">并行调用次数</label>
+      <input type="number" id="concurrentApiCalls" min="1" max="20" value="3">
+      <p class="field-hint">同时发起的模型请求数，默认为 3；实际并行数不会超过本页调用上限。</p>
     </div>
 
   </div>

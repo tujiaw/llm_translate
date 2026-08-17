@@ -228,6 +228,44 @@ body.llm-translations-hidden .llm-translation-label {
   gap: 8px;
 }
 
+.llm-status-text {
+  flex: 1;
+}
+
+.llm-status-cancel {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  margin: -3px -6px -3px 2px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #6e6e73;
+  font-family: Arial, sans-serif;
+  font-size: 18px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.llm-status-cancel:hover {
+  background: #f2f2f7;
+  color: #1d1d1f;
+}
+
+.llm-status-cancel:focus-visible {
+  outline: 2px solid #007aff;
+  outline-offset: 1px;
+}
+
+.llm-status-cancel:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .llm-status-icon {
   font-weight: 700;
-} 
+}

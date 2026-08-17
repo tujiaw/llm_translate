@@ -4,8 +4,18 @@ const DEFAULT_CONFIG = {
   nativeLanguage: 'zh',
   models: [],
   currentModelId: '',
-  maxApiCalls: 10
+  maxApiCalls: 10,
+  concurrentApiCalls: 3,
+  translationDisplayMode: 'bilingual'
 };
+
+function clampInteger(value, fallback, max) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return fallback;
+  }
+  return Math.min(max, Math.max(1, parsed));
+}
 
 const MODEL_PROVIDERS = [
   {
@@ -271,9 +281,15 @@ class ConfigService {
       nativeLanguage: config.nativeLanguage || DEFAULT_CONFIG.nativeLanguage,
       models,
       currentModelId: resolvedCurrent,
-      maxApiCalls: (config.maxApiCalls && config.maxApiCalls > 0)
-        ? config.maxApiCalls
-        : DEFAULT_CONFIG.maxApiCalls
+      maxApiCalls: clampInteger(config.maxApiCalls, DEFAULT_CONFIG.maxApiCalls, 50),
+      concurrentApiCalls: clampInteger(
+        config.concurrentApiCalls,
+        DEFAULT_CONFIG.concurrentApiCalls,
+        20
+      ),
+      translationDisplayMode: config.translationDisplayMode === 'replace'
+        ? 'replace'
+        : DEFAULT_CONFIG.translationDisplayMode
     };
   }
 
@@ -307,7 +323,9 @@ class ConfigService {
       nativeLanguage: normalized.nativeLanguage,
       models: normalized.models,
       currentModelId: normalized.currentModelId,
-      maxApiCalls: normalized.maxApiCalls
+      maxApiCalls: normalized.maxApiCalls,
+      concurrentApiCalls: normalized.concurrentApiCalls,
+      translationDisplayMode: normalized.translationDisplayMode
     };
   }
 

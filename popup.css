@@ -80,6 +80,12 @@ body {
   justify-content: space-between;
 }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
 .popup-title {
   margin: 0;
   font-size: 15px;
