@@ -172,35 +172,13 @@
 }
 
 /* 添加全网页翻译相关的样式 */
+/* 双语对照：译文单独成行（<br> 换行 + 译文），完全继承原文样式，尽量少加效果 */
 .llm-translation-label {
-  display: block;
-  color: #4b5563;
-  background: transparent;
+  display: inline;
   font: inherit;
-  font-size: 0.95em;
-  line-height: 1.5;
-  padding: 0.12em 0 0.12em 0.65em;
-  margin: 0.3em 0 0.08em;
-  border-left: 2px solid rgba(0, 122, 255, 0.45);
+  color: inherit;
+  line-height: inherit;
   word-wrap: break-word;
-  opacity: 0.9;
-  transition: background-color 0.15s ease, border-color 0.15s ease, opacity 0.15s ease;
-}
-
-.llm-translation-source {
-  transition: outline-color 0.15s ease, background-color 0.15s ease;
-}
-
-.llm-translation-source:hover {
-  outline: 1px solid rgba(0, 122, 255, 0.16);
-  outline-offset: 3px;
-}
-
-.llm-translation-source:hover > .llm-translation-label,
-.llm-translation-label:hover {
-  background-color: rgba(0, 122, 255, 0.055) !important;
-  border-left-color: rgba(0, 122, 255, 0.8);
-  opacity: 1;
 }
 
 /* 显示原文：隐藏全部译文标签 */

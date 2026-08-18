@@ -61,6 +61,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         concurrentApiCalls: document.getElementById('concurrentApiCalls'),
         // 目标语言
         nativeLanguage: document.getElementById('nativeLanguage'),
+        ignoredPageRegions: document.getElementById('ignoredPageRegions'),
         // 模型栏
         modelBar: document.getElementById('modelBar'),
         modelBarName: document.getElementById('modelBarName'),
@@ -79,7 +80,8 @@ document.addEventListener('DOMContentLoaded', async function() {
         testModelBtn: document.getElementById('testModelBtn'),
         saveModelBtn: document.getElementById('saveModelBtn'),
         modelTestStatus: document.getElementById('modelTestStatus'),
-        advancedJson: document.getElementById('advancedJson')
+        advancedJson: document.getElementById('advancedJson'),
+        llmOnlyFields: document.getElementById('llmOnlyFields')
       };
     }
 
@@ -95,6 +97,11 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     function hasApiKey(entry) {
       return Boolean(entry && (entry.apiKey || '').trim());
+    }
+
+    function isWebService(entry) {
+      const type = (entry && entry.serviceType) || 'llm';
+      return type === 'bing';
     }
 
     function currentEntry() {
@@ -173,9 +180,49 @@ document.addEventListener('DOMContentLoaded', async function() {
       });
     }
 
+    function renderRegionCheckboxes(selectedIds) {
+      elements.ignoredPageRegions.innerHTML = '';
+      const selected = new Set(Array.isArray(selectedIds) ? selectedIds : ['header', 'footer']);
+      ConfigService.getPageRegionOptions().forEach((region) => {
+        const label = document.createElement('label');
+        label.className = 'region-checkbox';
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.value = region.id;
+        checkbox.checked = selected.has(region.id);
+        checkbox.addEventListener('change', () => saveSettings());
+        label.appendChild(checkbox);
+        label.appendChild(document.createTextNode(region.name));
+        elements.ignoredPageRegions.appendChild(label);
+      });
+    }
+
+    function collectIgnoredRegions() {
+      const ids = [];
+      elements.ignoredPageRegions
+        .querySelectorAll('input[type="checkbox"]:checked')
+        .forEach((checkbox) => ids.push(checkbox.value));
+      return ids;
+    }
+
     function flushEditorToWorking() {
       const idx = workingModels.findIndex((item) => item.id === selectedModelId);
       if (idx === -1) {
+        return;
+      }
+      const provider = ConfigService.getProvider(elements.modelProvider.value || 'custom');
+      if (provider.type === 'bing') {
+        workingModels[idx] = {
+          ...workingModels[idx],
+          id: ConfigService.identityKey(provider.id, ''),
+          providerId: provider.id,
+          serviceType: provider.type,
+          baseUrl: '',
+          model: '',
+          apiKey: '',
+          bodyJson: '{}'
+        };
+        refreshModelBar();
         return;
       }
       const rawJson = elements.modelBodyJson.value.trim();
@@ -183,6 +230,7 @@ document.addEventListener('DOMContentLoaded', async function() {
         ...workingModels[idx],
         id: selectedModelId,
         providerId: elements.modelProvider.value || 'custom',
+        serviceType: 'llm',
         baseUrl: elements.modelBaseUrl.value.trim(),
         model: elements.modelName.value.trim(),
         apiKey: elements.modelApiKey.value.trim(),
@@ -227,6 +275,10 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     function applyWorkingToEditor(entry) {
+      const isWeb = isWebService(entry);
+      elements.llmOnlyFields.classList.toggle('hidden', isWeb);
+      elements.advancedJson.classList.toggle('hidden', isWeb);
+
       if (!entry) {
         elements.modelProvider.value = 'deepseek';
         elements.modelBaseUrl.value = '';
@@ -246,7 +298,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       elements.modelApiKey.value = entry.apiKey || '';
       elements.modelBodyJson.value = (entry.bodyJson || '').trim() || '{}';
       elements.modelProviderHint.textContent = ConfigService.getProvider(providerId).hint;
-      elements.advancedJson.open = Boolean(entry.bodyJson && entry.bodyJson.trim() && entry.bodyJson.trim() !== '{}');
+      elements.advancedJson.open = Boolean(!isWeb && entry.bodyJson && entry.bodyJson.trim() && entry.bodyJson.trim() !== '{}');
       refreshModelBar();
     }
 
@@ -299,8 +351,9 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         populateLanguageSelect(elements.nativeLanguage);
         populateProviderSelect();
+        renderRegionCheckboxes(config.ignoredPageRegions);
 
-        const createdDefault = ensureDefaultModel();
+        ensureDefaultModel();
         populateModelSelect();
 
         if (config.nativeLanguage) {
@@ -315,9 +368,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         refreshModelBar();
 
-        if (createdDefault) {
-          await saveSettings();
-        }
+        // 注意：加载时不再自动保存默认模型，避免把存储里尚未迁移的旧版配置覆盖掉。
         if (!ConfigService.isModelReady(currentEntry())) {
           showView('settings');
           setTestStatus('请先填写 API Key，建议先点「测试连接」', 'pending');
@@ -448,9 +499,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         workingModels.push(created);
         selectedModelId = created.id;
         populateModelSelect();
-        setTestStatus('请填写该服务商的 API Key', 'pending');
+        if (isWebService(created)) {
+          setTestStatus('免费接口，无需 API Key，可直接使用', 'pending');
+        } else {
+          setTestStatus('请填写该服务商的 API Key', 'pending');
+          elements.modelApiKey.focus();
+        }
         saveSettings();
-        elements.modelApiKey.focus();
       });
 
       elements.removeModelBtn.addEventListener('click', () => {
@@ -603,7 +658,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       button.disabled = false;
       button.textContent = '取消';
       button.classList.add('is-cancel');
-      setTestStatus(`正在请求模型…（${timeoutSec}秒超时）`, 'pending');
+      setTestStatus(`正在测试连接…（${timeoutSec}秒超时）`, 'pending');
 
       try {
         const saved = await persistCurrentEditor();
@@ -691,7 +746,12 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
       selectedModelId = created.id;
       populateModelSelect();
-      setTestStatus('已切换服务商，请填写该服务商的 API Key', 'pending');
+      setTestStatus(
+        created.serviceType === 'bing'
+          ? `已切换到${provider.name}（免费，无需 API Key），可直接使用`
+          : '已切换服务商，请填写该服务商的 API Key',
+        'pending'
+      );
     }
 
     function toggleApiKeyVisibility(inputElement, buttonElement) {
@@ -719,7 +779,8 @@ document.addEventListener('DOMContentLoaded', async function() {
           currentModelId: selectedModelId,
           translationDisplayMode: elements.translationDisplayMode.value,
           maxApiCalls: clampSetting(elements.maxApiCalls, 10, 50),
-          concurrentApiCalls: clampSetting(elements.concurrentApiCalls, 3, 20)
+          concurrentApiCalls: clampSetting(elements.concurrentApiCalls, 3, 20),
+          ignoredPageRegions: collectIgnoredRegions()
         });
         return true;
       } catch (error) {

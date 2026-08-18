@@ -8,6 +8,8 @@
 - 中英文互译，自动判断语言类型
 - 提供多种主流大模型支持（OpenAI、Claude、Gemini等）
 - 内置免费模型支持，无需自行寻找API（GLM-4、Qwen2等）
+- 内置 Bing 翻译 免费接口，无需 API Key
+- 整页翻译默认忽略页头/页脚，可在「翻译设置」中配置忽略的区域（导航、侧边栏、表单、弹窗等）
 - 支持选择文本后直接弹出翻译按钮
 - 右键菜单快速翻译
 - 可自定义API和模型配置
@@ -56,6 +58,11 @@
 - Qwen/Qwen2.5-7B-Instruct
 - Qwen/Qwen2.5-Coder-7B-Instruct
 - THUDM/glm-4-9b-chat
+
+#### 免费翻译服务（无需 API Key）
+- **Bing 翻译**：使用微软 `edge.microsoft.com` 免费接口（2026-07 后为免密钥的 `translatetext` 端点）。
+
+在「模型设置 → 服务商」中选择即可，无需填写模型 ID 与 API Key，覆盖弹窗文本翻译、选中/右键翻译与整页翻译。
 
 #### 自定义
 - 支持配置自定义API端点和模型

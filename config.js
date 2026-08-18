@@ -6,8 +6,19 @@ const DEFAULT_CONFIG = {
   currentModelId: '',
   maxApiCalls: 10,
   concurrentApiCalls: 3,
-  translationDisplayMode: 'bilingual'
+  translationDisplayMode: 'bilingual',
+  ignoredPageRegions: ['header', 'footer']
 };
+
+// 整页翻译可忽略的页面区域（id 与设置面板展示名）
+const PAGE_REGION_OPTIONS = [
+  { id: 'header', name: '页头 <header>' },
+  { id: 'footer', name: '页脚 <footer>' },
+  { id: 'nav', name: '导航栏 <nav>' },
+  { id: 'aside', name: '侧边栏 <aside>' },
+  { id: 'form', name: '表单 <form>' },
+  { id: 'dialog', name: '弹窗/对话框 [role=dialog]' }
+];
 
 function clampInteger(value, fallback, max) {
   const parsed = Number.parseInt(value, 10);
@@ -89,6 +100,14 @@ const MODEL_PROVIDERS = [
     hint: '本地需先启动 Ollama，API Key 可填 ollama'
   },
   {
+    id: 'bing',
+    name: 'Bing 翻译',
+    type: 'bing',
+    baseUrl: '',
+    defaultModel: '',
+    hint: '使用微软免费翻译接口，无需 API Key'
+  },
+  {
     id: 'custom',
     name: '自定义（OpenAI 兼容）',
     baseUrl: '',
@@ -100,6 +119,10 @@ const MODEL_PROVIDERS = [
 class ConfigService {
   static getProviders() {
     return MODEL_PROVIDERS;
+  }
+
+  static getPageRegionOptions() {
+    return PAGE_REGION_OPTIONS;
   }
 
   static getProvider(providerId) {
@@ -164,6 +187,7 @@ class ConfigService {
     return {
       id: this.identityKey(provider.id, model),
       providerId: provider.id,
+      serviceType: provider.type || 'llm',
       baseUrl: provider.baseUrl,
       model,
       apiKey: '',
@@ -187,6 +211,9 @@ class ConfigService {
   static isModelReady(entry) {
     if (!entry) {
       return false;
+    }
+    if (entry.serviceType === 'bing') {
+      return Boolean(entry.providerId);
     }
     return Boolean(
       (entry.baseUrl || '').trim()
@@ -218,22 +245,67 @@ class ConfigService {
   }
 
   static normalizeConfig(config) {
-    let models = Array.isArray(config.models) ? config.models.map((item) => ({ ...item })) : [];
+    // 过滤已下线的 Google 翻译条目，避免残留空配置
+    let models = Array.isArray(config.models)
+      ? config.models
+          .filter((item) => (item.serviceType || item.providerId) !== 'google')
+          .map((item) => ({ ...item }))
+      : [];
     let currentModelId = typeof config.currentModelId === 'string' ? config.currentModelId : '';
+    let legacySelectedKey = '';
 
+    // 旧版自定义模型（customModel）迁移：可识别到内置服务商时自动归位（如 deepseek 自定义端点 → deepseek 服务商）
     if (models.length === 0 && config.customModel && config.customModel.enabled) {
       const customModel = config.customModel;
       const hasLegacy = (customModel.apiEndpoint || '').trim() || (customModel.name || '').trim();
       if (hasLegacy) {
         const modelName = (customModel.name || '').trim();
+        // 不传 type：customModel.type 固定为 "custom"，会让 inferProviderId 短路，
+        // 导致 hostname 匹配不到 deepseek 等服务商
+        const providerId = ConfigService.inferProviderId(customModel.apiEndpoint);
         models.push({
-          id: ConfigService.identityKey('custom', modelName),
-          providerId: 'custom',
+          id: ConfigService.identityKey(providerId, modelName),
+          providerId,
           baseUrl: (customModel.apiEndpoint || '').trim(),
           model: modelName,
           apiKey: (customModel.apiKey || '').trim(),
           bodyJson: '{}'
         });
+      }
+    }
+
+    // 更早版本（1.0.2 及以前）的 modelDefinitions + apiKeys + currentModel 迁移
+    if (models.length === 0 && config.modelDefinitions && typeof config.modelDefinitions === 'object') {
+      const legacyApiKeys = (config.apiKeys && typeof config.apiKeys === 'object') ? config.apiKeys : {};
+      const legacySelected = typeof config.currentModel === 'string' ? config.currentModel : '';
+      const migrated = [];
+      for (const defId of Object.keys(config.modelDefinitions)) {
+        const def = config.modelDefinitions[defId];
+        if (!def || typeof def !== 'object') {
+          continue;
+        }
+        const name = (def.name || '').trim();
+        const endpoint = (def.apiEndpoint || '').trim();
+        if (!name || !endpoint) {
+          continue;
+        }
+        const providerId = ConfigService.inferProviderId(endpoint, def.type);
+        const key = ConfigService.identityKey(providerId, name);
+        migrated.push({
+          id: key,
+          providerId,
+          baseUrl: endpoint,
+          model: name,
+          // 旧版 apiKeys 用 "silicon-flow" 之类旧名，与新 providerId 可能不同，两种都尝试
+          apiKey: (legacyApiKeys[providerId] || legacyApiKeys[def.type] || '').trim(),
+          bodyJson: '{}'
+        });
+        if (defId === legacySelected) {
+          legacySelectedKey = key;
+        }
+      }
+      if (migrated.length > 0) {
+        models = migrated;
       }
     }
 
@@ -244,11 +316,13 @@ class ConfigService {
       const rawJson = (item.bodyJson || '').trim();
       const baseUrl = (item.baseUrl || '').trim();
       const providerId = ConfigService.inferProviderId(baseUrl, item.providerId);
+      const serviceType = ConfigService.getProvider(providerId).type || 'llm';
       const model = (item.model || '').trim();
       const key = ConfigService.identityKey(providerId, model);
       const normalized = {
         id: key,
         providerId,
+        serviceType,
         baseUrl,
         model,
         apiKey: (item.apiKey || '').trim(),
@@ -274,8 +348,13 @@ class ConfigService {
 
     models = merged;
     if (!models.some((item) => item.id === resolvedCurrent)) {
-      resolvedCurrent = models[0]?.id || '';
+      resolvedCurrent = legacySelectedKey || models[0]?.id || '';
     }
+
+    const validRegionIds = new Set(PAGE_REGION_OPTIONS.map((item) => item.id));
+    const ignoredPageRegions = Array.isArray(config.ignoredPageRegions)
+      ? config.ignoredPageRegions.filter((id) => validRegionIds.has(id))
+      : ['header', 'footer'];
 
     return {
       nativeLanguage: config.nativeLanguage || DEFAULT_CONFIG.nativeLanguage,
@@ -289,7 +368,8 @@ class ConfigService {
       ),
       translationDisplayMode: config.translationDisplayMode === 'replace'
         ? 'replace'
-        : DEFAULT_CONFIG.translationDisplayMode
+        : DEFAULT_CONFIG.translationDisplayMode,
+      ignoredPageRegions
     };
   }
 
@@ -325,19 +405,22 @@ class ConfigService {
       currentModelId: normalized.currentModelId,
       maxApiCalls: normalized.maxApiCalls,
       concurrentApiCalls: normalized.concurrentApiCalls,
-      translationDisplayMode: normalized.translationDisplayMode
+      translationDisplayMode: normalized.translationDisplayMode,
+      ignoredPageRegions: normalized.ignoredPageRegions
     };
   }
 
   static async load() {
-    const localItems = await this._storageGet('local', DEFAULT_CONFIG);
+    // 读取全部键（get(null)），否则 get(DEFAULT_CONFIG) 只返回 DEFAULT_CONFIG 内的键，
+    // 旧版的 customModel / modelDefinitions / apiKeys / currentModel 等键读不到，配置会被当成"空"。
+    const localItems = await this._storageGet('local', null);
     const localConfig = this.normalizeConfig(this._createSafeConfig(localItems));
     if (localConfig.models.length > 0) {
       return localConfig;
     }
 
     try {
-      const syncItems = await this._storageGet('sync', DEFAULT_CONFIG);
+      const syncItems = await this._storageGet('sync', null);
       const syncConfig = this.normalizeConfig(this._createSafeConfig(syncItems));
       if (syncConfig.models.length > 0) {
         await this._storageSet('local', this._toPayload(syncConfig));
@@ -353,6 +436,13 @@ class ConfigService {
   static async save(config) {
     const payload = this._toPayload(config);
     await this._storageSet('local', payload);
+    // 清理旧版配置键，避免与 models 新 schema 并存造成困惑（尽力而为，不阻塞保存）
+    const legacyKeys = ['modelDefinitions', 'modelGroups', 'apiKeys', 'customModel', 'currentModel'];
+    chrome.storage.local.remove(legacyKeys, () => {
+      if (chrome.runtime.lastError) {
+        console.warn('清理旧配置键时出错:', chrome.runtime.lastError);
+      }
+    });
   }
 
   static getDefaults() {
@@ -372,7 +462,7 @@ class ConfigService {
   }
 }
 
-export { MODEL_PROVIDERS };
+export { MODEL_PROVIDERS, PAGE_REGION_OPTIONS };
 export default ConfigService;
 
 if (typeof self !== 'undefined' && self.constructor && self.constructor.name === 'ServiceWorkerGlobalScope') {

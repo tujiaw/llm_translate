@@ -118,6 +118,9 @@ class ApiService {
   }
 
   static assertModelEntry(entry) {
+    if (entry.serviceType === 'bing') {
+      return;
+    }
     if (!(entry.baseUrl || '').trim()) {
       throw new Error('请填写接口地址（Base URL）');
     }
@@ -441,26 +444,33 @@ class ApiService {
       this.createTimeoutSignal(timeoutMs)
     ]);
 
-    const extra = this.parseBodyJson(entry.bodyJson);
-    const requestBody = this.deepMerge({
-      model: entry.model.trim(),
-      messages: [{ role: 'user', content: 'Reply with the single word: pong' }],
-      stream: false
-    }, extra);
-
-    requestBody.model = entry.model.trim();
-    requestBody.messages = [
-      { role: 'user', content: 'Reply with the single word: pong' }
-    ];
-    requestBody.stream = false;
-    this.disableThinking(entry, requestBody);
-
     const started = Date.now();
     try {
-      const data = await this.postChat(entry, requestBody, { signal: mergedSignal });
-      const preview = this.parseApiResponse(data).trim().slice(0, 80);
+      let preview;
+      let endpoint;
+      if (entry.serviceType === 'bing') {
+        preview = await this.translateViaBing('Hello', 'zh', mergedSignal);
+        endpoint = 'edge.microsoft.com（免费接口）';
+      } else {
+        const extra = this.parseBodyJson(entry.bodyJson);
+        const requestBody = this.deepMerge({
+          model: entry.model.trim(),
+          messages: [{ role: 'user', content: 'Reply with the single word: pong' }],
+          stream: false
+        }, extra);
+
+        requestBody.model = entry.model.trim();
+        requestBody.messages = [
+          { role: 'user', content: 'Reply with the single word: pong' }
+        ];
+        requestBody.stream = false;
+        this.disableThinking(entry, requestBody);
+
+        const data = await this.postChat(entry, requestBody, { signal: mergedSignal });
+        preview = this.parseApiResponse(data).trim().slice(0, 80);
+        endpoint = this.normalizeChatEndpoint(entry.baseUrl);
+      }
       const latencyMs = Date.now() - started;
-      const endpoint = this.normalizeChatEndpoint(entry.baseUrl);
       return { ok: true, latencyMs, preview, endpoint };
     } catch (error) {
       if (options.signal?.aborted) {
@@ -482,10 +492,89 @@ class ApiService {
       throw new Error('没有提供要翻译的文本');
     }
 
+    const { serviceType } = this.resolveCurrentModelEntry(config);
+    if (serviceType === 'bing') {
+      return this.translateViaBing(text, config.nativeLanguage || 'zh');
+    }
+
     const isChineseQuery = /[\u4e00-\u9fa5]/.test(text);
     const { requestBody, entry } = await this.createRequestConfig(config, text, isChineseQuery);
     const data = await this.postChat(entry, requestBody);
     return this.parseApiResponse(data);
+  }
+
+  /**
+   * 将 nativeLanguage 代码映射为微软翻译目标语言代码。
+   * @param {string} code - 语言代码（如 zh、en、ja）
+   * @returns {string} 微软目标语言代码
+   */
+  static toBingLangCode(code) {
+    if (code === 'zh') {
+      return 'zh-Hans';
+    }
+    return code || 'en';
+  }
+
+  static escapeHtmlText(text) {
+    return String(text).replace(/[&<>]/g, (char) => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;'
+    }[char]));
+  }
+
+  static unescapeHtmlText(text) {
+    return String(text).replace(/&(amp|lt|gt);/g, (match, entity) => ({
+      amp: '&',
+      lt: '<',
+      gt: '>'
+    }[entity] || match));
+  }
+
+  /**
+   * 通过微软免费翻译接口翻译文本（无需 API Key，2026-07 后端点无需令牌）。
+   * @param {string} text - 待翻译文本
+   * @param {string} nativeLanguage - 用户母语代码（目标语言）
+   * @param {AbortSignal} [signal] - 取消信号
+   * @returns {Promise<string>} 翻译结果
+   */
+  static async translateViaBing(text, nativeLanguage, signal) {
+    const target = this.toBingLangCode(nativeLanguage || 'zh');
+    const url = `https://edge.microsoft.com/translate/translatetext?from=&to=${encodeURIComponent(target)}&isEnterpriseClient=false`;
+
+    let response;
+    for (let attempt = 0; attempt <= 1; attempt++) {
+      response = await fetch(url, {
+        method: 'POST',
+        signal,
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify([this.escapeHtmlText(text)])
+      });
+      if (!response.ok && (response.status === 429 || response.status >= 500) && attempt === 0) {
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        continue;
+      }
+      break;
+    }
+
+    if (!response.ok) {
+      throw new Error(`Bing 翻译请求失败: HTTP ${response.status}`);
+    }
+
+    let data;
+    try {
+      data = await response.json();
+    } catch (error) {
+      throw new Error('Bing 翻译返回了无法解析的内容。');
+    }
+
+    const result = data?.[0]?.translations?.[0]?.text;
+    if (typeof result !== 'string') {
+      throw new Error('Bing 翻译返回了空结果。');
+    }
+    return this.unescapeHtmlText(result);
   }
 }
 

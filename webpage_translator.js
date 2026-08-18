@@ -94,7 +94,7 @@ class WebpageTranslatorService {
    * @param {'bilingual'|'replace'} displayMode - 译文展示方式
    * @returns {Array<{node: Node, text: string, id: string}>} 可翻译单元数组
    */
-  static getTranslatableNodes(displayMode = 'bilingual') {
+  static getTranslatableNodes(displayMode = 'bilingual', config) {
     const excludeTags = ['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'HEAD', 'META', 'TITLE', 'LINK'];
     const excludeClasses = [
       'llm-translation-label',
@@ -102,6 +102,47 @@ class WebpageTranslatorService {
       'llm-translation-popup',
       'llm-status-text'
     ];
+
+    // 按配置忽略页面区域（页头/页脚/导航等），默认忽略 header/footer。
+    const regionSelectors = {
+      header: 'header',
+      footer: 'footer',
+      nav: 'nav',
+      aside: 'aside',
+      form: 'form',
+      dialog: 'dialog, [role="dialog"]'
+    };
+    const ignoredRegions = Array.isArray(config && config.ignoredPageRegions)
+      ? config.ignoredPageRegions
+      : ['header', 'footer'];
+    const ignoredRegionSelector = ignoredRegions
+      .map((id) => regionSelectors[id])
+      .filter(Boolean)
+      .join(',');
+
+    // 缓存"元素是否位于被忽略区域内"的结果，祖先链只扫描一次
+    const insideIgnoredRegionCache = new WeakMap();
+    const isInsideIgnoredRegion = (el) => {
+      if (!el || !ignoredRegionSelector) {
+        return false;
+      }
+      if (insideIgnoredRegionCache.has(el)) {
+        return insideIgnoredRegionCache.get(el);
+      }
+      let result = false;
+      let ancestor = el;
+      while (ancestor) {
+        if (ancestor.nodeType === Node.ELEMENT_NODE
+            && ancestor.matches
+            && ancestor.matches(ignoredRegionSelector)) {
+          result = true;
+          break;
+        }
+        ancestor = ancestor.parentElement;
+      }
+      insideIgnoredRegionCache.set(el, result);
+      return result;
+    };
     // 代码相关的类名
     const codeClasses = [
       'codeblock', 'hljs', 'prism', 'prettyprint', 'sourceCode', 
@@ -158,12 +199,15 @@ class WebpageTranslatorService {
       return result;
     };
 
-    // 文本节点后是否紧跟译文标签（O(1)，替代每节点 querySelector 全子树搜索）
+    // 文本节点后是否紧跟译文标签（译文前会插入 <br>，需跳过）。O(1)，替代每节点 querySelector 全子树搜索
     const isTranslatedNode = (node) => {
       if (this.replacedTextNodes.has(node)) {
         return true;
       }
-      const next = node.nextSibling;
+      let next = node.nextSibling;
+      while (next && next.nodeName === 'BR') {
+        next = next.nextSibling;
+      }
       return Boolean(
         next &&
         next.nodeType === Node.ELEMENT_NODE &&
@@ -188,6 +232,11 @@ class WebpageTranslatorService {
               excludeTags.includes(parent.tagName) ||
               excludeClasses.some((cls) => parent.classList.contains(cls)) ||
               parent.closest('.llm-translation-source')) {
+            return NodeFilter.FILTER_REJECT;
+          }
+
+          // 排除配置中要求忽略的区域（页头/页脚/导航等，祖先链匹配）
+          if (isInsideIgnoredRegion(parent)) {
             return NodeFilter.FILTER_REJECT;
           }
 
@@ -406,6 +455,10 @@ Do not add any explanation or additional content.`;
         throw new Error('Model information not found: no model selected');
       }
 
+      if (entry.serviceType === 'bing') {
+        return this.batchTranslateViaWebService(nodeItems, config, entry, signal, reserveApiCall);
+      }
+
       const apiEndpoint = ApiService.normalizeChatEndpoint(entry.baseUrl);
       const apiKey = (entry.apiKey || '').trim();
       const modelName = (entry.model || '').trim();
@@ -576,6 +629,69 @@ Do not add any explanation or additional content.`;
       }));
     }
   }
+
+  /**
+   * 通过 Bing 免费翻译接口逐条翻译批次内文本。
+   * @param {Array<{text: string, id: string}>} nodeItems - 要翻译的文本和ID数组
+   * @param {object} config - 翻译配置
+   * @param {object} entry - 当前服务条目（serviceType 为 bing）
+   * @param {AbortSignal} signal - 用于终止当前网页翻译请求
+   * @param {() => boolean} reserveApiCall - 整个批次占用一次调用额度
+   * @returns {Promise<Array<{id: string, translation: string}>>} 翻译结果数组
+   */
+  static async batchTranslateViaWebService(nodeItems, config, entry, signal, reserveApiCall = () => true) {
+    if (!reserveApiCall()) {
+      const error = new Error('已达到接口调用上限');
+      error.code = 'API_CALL_LIMIT_REACHED';
+      throw error;
+    }
+
+    const nativeLanguage = config.nativeLanguage || 'zh';
+    const resultsById = new Map();
+
+    const translateOne = async (item) => {
+      if (signal?.aborted) {
+        const error = new Error('网页翻译已终止');
+        error.name = 'AbortError';
+        throw error;
+      }
+      try {
+        const translation = await ApiService.translateViaBing(item.text, nativeLanguage, signal);
+        resultsById.set(item.id, { id: item.id, translation });
+      } catch (error) {
+        if (signal?.aborted || error?.name === 'AbortError') {
+          throw error;
+        }
+        console.warn(`单条翻译失败 (${item.id}):`, error);
+        resultsById.set(item.id, { id: item.id, translation: '[Translation Error]' });
+      }
+    };
+
+    // 固定并发池逐条翻译，单条失败不中断整批。
+    const CONCURRENCY = 4;
+    let cursor = 0;
+    const worker = async () => {
+      while (cursor < nodeItems.length) {
+        const index = cursor++;
+        await translateOne(nodeItems[index]);
+      }
+    };
+    const workers = [];
+    const workerCount = Math.min(CONCURRENCY, nodeItems.length);
+    for (let i = 0; i < workerCount; i++) {
+      workers.push(worker());
+    }
+    await Promise.all(workers);
+
+    const results = [];
+    for (const item of nodeItems) {
+      const result = resultsById.get(item.id);
+      if (result) {
+        results.push(result);
+      }
+    }
+    return results;
+  }
   
   /**
    * 在网页中显示翻译结果
@@ -625,19 +741,21 @@ Do not add any explanation or additional content.`;
           continue;
         }
 
-        // 在完整原文段落末尾追加轻量译文，不改变原网页文字样式。
+        // 译文单独成行：先插入 <br> 再追加译文（参考沉浸式翻译的双语对照做法），尽量少加效果
+        sourceElement.classList.add('llm-translation-source');
+        sourceElement.appendChild(document.createElement('br'));
+
         const translationLabel = document.createElement('span');
         translationLabel.className = 'llm-translation-label';
         translationLabel.textContent = translation;
         translationLabel.dataset.translationId = nodeInfo.id;
-        sourceElement.classList.add('llm-translation-source');
         sourceElement.appendChild(translationLabel);
       } catch (error) {
         console.error('Error displaying translation:', error, nodeInfo);
       }
     }
   }
-  
+
   /**
    * 根据节点在视口中的可见性排序
    * @param {Array<{node: Node, text: string, id: string}>} nodes - 节点数组
@@ -747,6 +865,9 @@ Do not add any explanation or additional content.`;
     config.translationDisplayMode = config.translationDisplayMode === 'replace'
       ? 'replace'
       : 'bilingual';
+    config.ignoredPageRegions = Array.isArray(config.ignoredPageRegions)
+      ? config.ignoredPageRegions
+      : ['header', 'footer'];
     if (!Array.isArray(config.models)) {
       config.models = [];
     }
@@ -914,7 +1035,7 @@ Do not add any explanation or additional content.`;
       config = this.ensureCompleteConfig(config);
 
       // 对照模式按段落聚合，直接替换模式保持文本节点粒度。
-      const allNodeInfoArray = this.getTranslatableNodes(config.translationDisplayMode);
+      const allNodeInfoArray = this.getTranslatableNodes(config.translationDisplayMode, config);
 
       if (allNodeInfoArray.length === 0) {
         this.showTranslationComplete('未找到可翻译的文本');

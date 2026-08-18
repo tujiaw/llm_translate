@@ -99,17 +99,19 @@
         <select id="modelProvider"></select>
         <p class="field-hint" id="modelProviderHint"></p>
 
-        <label class="field-label" for="modelName">模型 ID</label>
-        <input type="text" id="modelName" placeholder="如 deepseek-chat、doubao-pro-32k" autocomplete="off">
+        <div id="llmOnlyFields">
+          <label class="field-label" for="modelName">模型 ID</label>
+          <input type="text" id="modelName" placeholder="如 deepseek-chat、doubao-pro-32k" autocomplete="off">
 
-        <label class="field-label" for="modelApiKey">API Key</label>
-        <div class="key-input-container">
-          <input type="password" id="modelApiKey" placeholder="粘贴该服务商的 API Key" autocomplete="off">
-          <button type="button" id="showModelKeyBtn" class="show-key-btn" title="显示/隐藏" aria-label="显示或隐藏 API Key">
-            <img src="images/eye-close.png" alt="Show" class="eye-icon">
-          </button>
+          <label class="field-label" for="modelApiKey">API Key</label>
+          <div class="key-input-container">
+            <input type="password" id="modelApiKey" placeholder="粘贴该服务商的 API Key" autocomplete="off">
+            <button type="button" id="showModelKeyBtn" class="show-key-btn" title="显示/隐藏" aria-label="显示或隐藏 API Key">
+              <img src="images/eye-close.png" alt="Show" class="eye-icon">
+            </button>
+          </div>
+          <p class="field-hint">Key 只保存在本机，且只用于当前服务商，不会带到其他服务商。</p>
         </div>
-        <p class="field-hint">Key 只保存在本机，且只用于当前服务商，不会带到其他服务商。</p>
 
         <details class="advanced-json" id="advancedJson">
           <summary>高级选项（可选）</summary>
@@ -151,6 +153,12 @@
       <label class="field-label" for="concurrentApiCalls">并行调用次数</label>
       <input type="number" id="concurrentApiCalls" min="1" max="20" value="3">
       <p class="field-hint">同时发起的模型请求数，默认为 3；实际并行数不会超过本页调用上限。</p>
+
+      <div class="divider"></div>
+
+      <label class="field-label">翻译时忽略的区域</label>
+      <div id="ignoredPageRegions" class="region-checkbox-group"></div>
+      <p class="field-hint">整页翻译会跳过勾选区域的文本。页头/页脚默认忽略，可随时取消勾选。</p>
     </div>
 
   </div>

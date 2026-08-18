@@ -564,6 +564,34 @@ textarea::placeholder {
   color: var(--text-muted);
 }
 
+/* ---------------- 忽略区域复选框 ---------------- */
+
+.region-checkbox-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 0;
+}
+
+.region-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text);
+  cursor: pointer;
+  user-select: none;
+}
+
+.region-checkbox input[type="checkbox"] {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+
 /* ---------------- 加载动画 ---------------- */
 
 .spinner {
