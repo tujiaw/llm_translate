@@ -29,8 +29,7 @@
       "matches": ["<all_urls>"],
       "js": ["content.js"],
       "css": ["content.css"],
-      "run_at": "document_start",
-      "type": "module"
+      "run_at": "document_start"
     }
   ],
   "background": {
