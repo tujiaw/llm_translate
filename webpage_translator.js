@@ -11,6 +11,24 @@ import ConfigService from './config.js';
 class WebpageTranslatorService {
   static activeTranslationController = null;
   static replacedTextNodes = new Map();
+  // 滚动/懒加载新内容的自动翻译（live 模式）
+  static liveObserver = null;
+  static liveTimer = null;
+  static liveLastRunAt = 0;
+  static liveConfig = null;
+  static liveRunId = 0;
+  // 异常情况防护（不做硬上限，只针对病态反复调用）：
+  // - liveInFlight：正在翻译中的文本，防止并发轮次重复调用同一内容
+  // - liveFailedTexts：近期翻译失败的文本（服务异常时避免每轮都重试）
+  // - livePausedUntil / liveRecentRuns：页面异常持续刷内容时，熔断暂停片刻后自动恢复
+  static liveInFlight = new Set();
+  static liveFailedTexts = new Map();
+  static livePausedUntil = 0;
+  static liveRecentRuns = [];
+  static LIVE_FAIL_COOLDOWN_MS = 30000;
+  static LIVE_BURST_WINDOW_MS = 10000;
+  static LIVE_BURST_MAX_NODES = 30;
+  static LIVE_PAUSE_MS = 20000;
 
   /**
    * 粗略估算文本 token：中日韩字符约 1 token，其余字符约 4 字符/token。
@@ -748,7 +766,9 @@ Do not add any explanation or additional content.`;
 
         // 译文单独成行：先插入 <br> 再追加译文（参考沉浸式翻译的双语对照做法），尽量少加效果
         sourceElement.classList.add('llm-translation-source');
-        sourceElement.appendChild(document.createElement('br'));
+        const lineBreak = document.createElement('br');
+        lineBreak.className = 'llm-translation-br';
+        sourceElement.appendChild(lineBreak);
 
         const translationLabel = document.createElement('span');
         translationLabel.className = 'llm-translation-label';
@@ -972,11 +992,19 @@ Do not add any explanation or additional content.`;
    * 清除所有翻译标签
    */
   static clearTranslations() {
-    // 查找并移除所有翻译标签
+    // 清除翻译后停止 live 监听，避免新内容继续被自动翻译
+    this.stopLiveTranslation();
+
+    // 查找并移除所有翻译标签与其前的换行符
     const translationLabels = document.querySelectorAll('.llm-translation-label');
     translationLabels.forEach(label => {
       if (label && label.parentNode) {
         label.parentNode.removeChild(label);
+      }
+    });
+    document.querySelectorAll('.llm-translation-br').forEach((br) => {
+      if (br && br.parentNode) {
+        br.parentNode.removeChild(br);
       }
     });
     document.querySelectorAll('.llm-translation-source').forEach((source) => {
@@ -1020,6 +1048,228 @@ Do not add any explanation or additional content.`;
   }
   
   /**
+   * 启动对滚动/懒加载新内容的自动翻译监听。
+   * @param {object} config - 归一化后的页面翻译配置
+   */
+  static startLiveTranslation(config) {
+    this.stopLiveTranslation();
+    this.liveConfig = config;
+    this.liveRunId++;
+    this.liveInFlight.clear();
+    this.liveFailedTexts.clear();
+    this.liveRecentRuns = [];
+    this.livePausedUntil = 0;
+    this.liveObserver = new MutationObserver((mutations) => {
+      if (this.hasRelevantMutations(mutations)) {
+        this.scheduleLiveRun();
+      }
+    });
+    this.liveObserver.observe(document.body, { childList: true, subtree: true });
+    // 立即处理一次：覆盖初始翻译期间已经懒加载进来的内容
+    this.scheduleLiveRun();
+  }
+
+  /**
+   * 停止 live 监听并取消挂起的增量翻译。
+   */
+  static stopLiveTranslation() {
+    this.liveRunId++;
+    if (this.liveObserver) {
+      this.liveObserver.disconnect();
+      this.liveObserver = null;
+    }
+    if (this.liveTimer) {
+      clearTimeout(this.liveTimer);
+      this.liveTimer = null;
+    }
+  }
+
+  /**
+   * 过滤掉我们自己插入的译文节点，判断 mutation 是否可能带来新的可翻译内容。
+   */
+  static hasRelevantMutations(mutations) {
+    for (const mutation of mutations) {
+      for (const added of mutation.addedNodes) {
+        if (added.nodeType === Node.ELEMENT_NODE
+            && (added.classList.contains('llm-translation-label')
+                || added.classList.contains('llm-translation-br'))) {
+          continue;
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /**
+   * 防抖调度一次增量翻译。
+   */
+  static scheduleLiveRun() {
+    if (this.liveTimer) {
+      return;
+    }
+    this.liveTimer = setTimeout(() => {
+      this.liveTimer = null;
+      this.runLiveTranslation();
+    }, 600);
+  }
+
+  /**
+   * 翻译靠近视口的、尚未翻译的新内容（增量分批，尽量不影响阅读）。
+   */
+  static async runLiveTranslation() {
+    if (!this.liveConfig) {
+      return;
+    }
+    const runId = this.liveRunId;
+    const config = this.liveConfig;
+
+    // 频率下限：距上次执行不足 1.2s 时顺延到下一轮
+    const now = Date.now();
+    if (now - this.liveLastRunAt < 1200) {
+      this.scheduleLiveRun();
+      return;
+    }
+    this.liveLastRunAt = now;
+
+    try {
+      // 熔断：页面异常持续快速产生新内容时，暂停片刻后自动恢复（不做永久硬上限）
+      if (Date.now() < this.livePausedUntil) {
+        return;
+      }
+
+      const allNodes = this.getTranslatableNodes(config.translationDisplayMode, config);
+      const nearNodes = allNodes
+        .filter((info) => this.isNearViewport(info.node))
+        .slice(0, 30);
+      if (nearNodes.length === 0) {
+        return;
+      }
+
+      // 去重 + 过滤近期失败/正在翻译中的文本，避免同一内容被反复调用
+      const textToNodes = new Map();
+      for (const info of nearNodes) {
+        if (this.isLiveTextBlocked(info.text)) {
+          continue;
+        }
+        const list = textToNodes.get(info.text);
+        if (list) {
+          list.push(info);
+        } else {
+          textToNodes.set(info.text, [info]);
+        }
+      }
+      const uniqueItems = Array.from(textToNodes.entries())
+        .map(([text, nodes]) => ({ id: nodes[0].id, text }))
+        .filter((item) => !this.liveInFlight.has(item.text));
+      if (uniqueItems.length === 0) {
+        return;
+      }
+
+      // 标记为正在翻译，避免并发轮次重复调用同一内容
+      uniqueItems.forEach((item) => this.liveInFlight.add(item.text));
+      let results;
+      try {
+        results = await this.batchTranslate(uniqueItems, config, undefined, () => true);
+      } finally {
+        uniqueItems.forEach((item) => this.liveInFlight.delete(item.text));
+      }
+      // 若期间已停止 live（如清除翻译），放弃展示，避免把译文加回去
+      if (runId !== this.liveRunId) {
+        return;
+      }
+
+      // 分离成功与失败的文本：失败内容记录冷却，本次不展示错误占位
+      const resultMap = new Map(results.map((r) => [r.id, r.translation]));
+      const failNow = Date.now();
+      const rawNodes = [];
+      const expandedTranslations = [];
+      for (const item of uniqueItems) {
+        const translation = resultMap.get(item.id);
+        if (!translation || /^\[(Translation Error|API|Model)/.test(translation)) {
+          this.liveFailedTexts.set(item.text, failNow);
+          continue;
+        }
+        const nodes = textToNodes.get(item.text) || [];
+        rawNodes.push(...nodes);
+        for (const info of nodes) {
+          expandedTranslations.push({ id: info.id, translation });
+        }
+      }
+      if (rawNodes.length === 0) {
+        return; // 全部失败，本次不展示
+      }
+      this.displayTranslations(rawNodes, expandedTranslations, config.translationDisplayMode);
+
+      // 熔断检测：统计近期翻译量，异常高频（疑似病态循环）则暂停片刻
+      this.liveRecentRuns.push({ ts: Date.now(), count: rawNodes.length });
+      const windowStart = Date.now() - this.LIVE_BURST_WINDOW_MS;
+      this.liveRecentRuns = this.liveRecentRuns.filter((r) => r.ts >= windowStart);
+      const recentCount = this.liveRecentRuns.reduce((sum, r) => sum + r.count, 0);
+      if (recentCount > this.LIVE_BURST_MAX_NODES) {
+        this.livePausedUntil = Date.now() + this.LIVE_PAUSE_MS;
+        this.showTranslationComplete('页面持续快速产生新内容，自动翻译已暂停片刻');
+        console.warn(
+          `[live] 检测到异常高频新内容（${recentCount} 段/${this.LIVE_BURST_WINDOW_MS / 1000}s），`
+          + `暂停 ${this.LIVE_PAUSE_MS / 1000}s 后自动恢复`
+        );
+      }
+      console.log(`[live] 增量翻译 ${rawNodes.length} 段`);
+    } catch (error) {
+      if (error?.name !== 'AbortError') {
+        console.error('增量翻译出错:', error);
+      }
+    }
+  }
+
+  /**
+   * 判断文本是否处于"近期翻译失败"冷却期（服务异常时避免每轮都重试同一内容）。
+   */
+  static isLiveTextBlocked(text) {
+    const lastFail = this.liveFailedTexts.get(text);
+    if (!lastFail) {
+      return false;
+    }
+    return Date.now() - lastFail < this.LIVE_FAIL_COOLDOWN_MS;
+  }
+
+  /**
+   * 判断节点是否靠近当前视口（只翻译即将看到的内容，避免大段懒加载内容一次性翻译）。
+   */
+  static isNearViewport(node) {
+    const el = node.nodeType === Node.ELEMENT_NODE ? node : (node.parentElement || null);
+    if (!el || !this.isElementVisible(el)) {
+      return false;
+    }
+    const rect = el.getBoundingClientRect();
+    const vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    const vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    const marginY = Math.max(vh * 2, 400);
+    const marginX = Math.max(vw * 2, 400);
+    return rect.bottom > -marginY && rect.top < vh + marginY
+        && rect.right > -marginX && rect.left < vw + marginX;
+  }
+
+  /**
+   * 元素是否可见（非 display:none / visibility:hidden / 零尺寸）。
+   */
+  static isElementVisible(el) {
+    const rect = el.getBoundingClientRect();
+    if (rect.width === 0 && rect.height === 0) {
+      return false;
+    }
+    let current = el;
+    while (current && current.nodeType === Node.ELEMENT_NODE && current !== document.body) {
+      const style = window.getComputedStyle(current);
+      if (style.display === 'none' || style.visibility === 'hidden') {
+        return false;
+      }
+      current = current.parentElement;
+    }
+    return true;
+  }
+
+  /**
    * 执行全网页翻译（可视区域优先）
    * @returns {Promise<void>}
    */
@@ -1027,16 +1277,19 @@ Do not add any explanation or additional content.`;
     if (this.activeTranslationController && !this.activeTranslationController.signal.aborted) {
       this.activeTranslationController.abort();
     }
+    // 初始翻译期间暂停 live 监听，避免与新内容增量翻译抢跑
+    this.stopLiveTranslation();
     const controller = new AbortController();
     const { signal } = controller;
     this.activeTranslationController = controller;
+    let config = null;
 
     try {
       // 显示翻译中提示
       this.showTranslationInProgress();
 
       // 加载并确保配置完整性
-      let config = await this.loadConfig();
+      config = await this.loadConfig();
       config = this.ensureCompleteConfig(config);
 
       // 对照模式按段落聚合，直接替换模式保持文本节点粒度。
@@ -1214,6 +1467,10 @@ Do not add any explanation or additional content.`;
     } finally {
       if (this.activeTranslationController === controller) {
         this.activeTranslationController = null;
+      }
+      // 初始翻译结束后，持续监听滚动/懒加载产生的新内容并自动翻译
+      if (config) {
+        this.startLiveTranslation(config);
       }
     }
   }
