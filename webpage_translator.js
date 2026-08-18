@@ -714,12 +714,17 @@ Do not add any explanation or additional content.`;
     // 遍历所有节点添加翻译
     for (const nodeInfo of nodes) {
       const translation = translationMap.get(nodeInfo.id);
-      
+
       if (!translation) {
         console.warn(`Translation not found for ID ${nodeInfo.id}`);
         continue;
       }
-      
+
+      // 译文与原文相同（数字、专有名词、本就不需要翻译等），没必要显示译文
+      if (String(translation).trim() === (nodeInfo.text || '').trim()) {
+        continue;
+      }
+
       try {
         if (displayMode === 'replace') {
           const originalText = nodeInfo.node.textContent || '';
