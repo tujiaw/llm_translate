@@ -176,6 +176,9 @@
 .llm-translation-label {
   display: inline;
   font: inherit;
+  /* 译文比原文小约 2 个字号（0.8em），但有下限：原文过小（≤12px）时保持原文字号，不再缩小。
+     1em 封顶保证译文不会超过原文。!important 防止被页面 span 字号规则覆盖 */
+  font-size: min(max(0.8em, 12px), 1em) !important;
   color: inherit;
   line-height: inherit;
   word-wrap: break-word;
