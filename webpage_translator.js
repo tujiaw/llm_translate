@@ -817,14 +817,10 @@ Do not add any explanation or additional content.`;
   
   /**
    * 更新翻译进度提示
-   * @param {number} current - 当前进度
-   * @param {number} total - 总数量
-   * @param {number} completedBatches - 已完成批次数
-   * @param {number} totalBatches - 总批次数
-   * @param {number} activeRequests - 当前活动请求数
-   * @param {number} maxConcurrent - 并发上限
+   * @param {number} current - 已翻译段数
+   * @param {number} total - 待翻译总段数
    */
-  static updateTranslationProgress(current, total, completedBatches, totalBatches, activeRequests, maxConcurrent) {
+  static updateTranslationProgress(current, total) {
     const statusBox = document.getElementById('llm-translation-status');
     if (!statusBox) {
       return;
@@ -833,7 +829,7 @@ Do not add any explanation or additional content.`;
     statusBox.innerHTML = `
       <div class="llm-status-row">
         <div class="llm-status-spinner"></div>
-        <span class="llm-status-text">正在翻译 ${percent}%（批次 ${completedBatches}/${totalBatches}，并行 ${activeRequests}/${maxConcurrent}）</span>
+        <span class="llm-status-text">正在翻译 ${percent}%</span>
         <button type="button" class="llm-status-cancel" title="终止翻译" aria-label="终止翻译">×</button>
       </div>
     `;
@@ -1346,8 +1342,6 @@ Do not add any explanation or additional content.`;
       );
       let callCount = 0;
       let translatedCount = 0;
-      let completedBatches = 0;
-      let activeRequests = 0;
       let callLimitReached = scheduledItemCount < uniqueItems.length;
       let nextBatchIndex = 0;
       const reserveApiCall = () => {
@@ -1374,15 +1368,7 @@ Do not add any explanation or additional content.`;
           return;
         }
         const batchNodes = batches[index];
-        activeRequests++;
-        this.updateTranslationProgress(
-          translatedCount,
-          sortedNodes.length,
-          completedBatches,
-          batches.length,
-          activeRequests,
-          maxConcurrent
-        );
+        this.updateTranslationProgress(translatedCount, sortedNodes.length);
 
         try {
           const translationResults = await this.batchTranslate(
@@ -1415,18 +1401,9 @@ Do not add any explanation or additional content.`;
           );
 
           translatedCount += batchRawNodes.length;
-          completedBatches++;
         } finally {
-          activeRequests--;
           if (!signal.aborted) {
-            this.updateTranslationProgress(
-              translatedCount,
-              sortedNodes.length,
-              completedBatches,
-              batches.length,
-              activeRequests,
-              maxConcurrent
-            );
+            this.updateTranslationProgress(translatedCount, sortedNodes.length);
           }
         }
       };
