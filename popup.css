@@ -115,6 +115,57 @@ body {
   color: var(--text);
 }
 
+/* 返回按钮：圆形 chevron */
+.back-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: #ffffff;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.back-btn:hover {
+  background: var(--bg-soft);
+  border-color: #d8d8de;
+}
+
+/* 设置页：头部固定，仅内容区域滚动 */
+#settingsView,
+#translationSettingsView {
+  max-height: 548px; /* 580(弹窗上限) - 32(容器上下内边距) */
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.settings-header {
+  flex-shrink: 0;
+  padding: 0 2px 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings-body {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* 翻译设置更紧凑：缩小元素间距 */
+#translationSettingsView .settings-body {
+  gap: 7px;
+}
+
 /* ---------------- 模式切换（分段控件） ---------------- */
 
 .mode-switch {
@@ -187,6 +238,39 @@ body {
 
 .field-row .field-label {
   margin: 0;
+}
+
+/* 设置项：标签与控件同行，节省纵向空间 */
+.settings-field-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.settings-field-row .field-label {
+  margin: 0;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.settings-field-row select {
+  width: auto;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.settings-field-row input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--blue);
+  cursor: pointer;
+}
+
+.settings-field-row select:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 select,
@@ -443,21 +527,10 @@ textarea::placeholder {
 
 /* ---------------- 模型设置视图 ---------------- */
 
-.current-model-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.current-model-row select {
-  flex: 1;
-  min-width: 0;
-}
-
 .model-editor {
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 8px;
 }
 
 .key-input-container {
@@ -568,15 +641,16 @@ textarea::placeholder {
 
 .region-checkbox-group {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 4px 12px;
   padding: 2px 0;
 }
 
 .region-checkbox {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  flex: 0 0 calc(50% - 6px);
   font-size: 12px;
   color: var(--text);
   cursor: pointer;
@@ -638,6 +712,7 @@ option {
 
 .btn:focus-visible,
 .icon-btn:focus-visible,
+.back-btn:focus-visible,
 .mode-segment:focus-visible,
 .model-bar:focus-visible,
 .btn-text:focus-visible,

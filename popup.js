@@ -62,13 +62,15 @@ document.addEventListener('DOMContentLoaded', async function() {
         // 目标语言
         nativeLanguage: document.getElementById('nativeLanguage'),
         ignoredPageRegions: document.getElementById('ignoredPageRegions'),
+        textSelectionEnabled: document.getElementById('textSelectionEnabled'),
+        selectionOffsetX: document.getElementById('selectionOffsetX'),
+        selectionOffsetY: document.getElementById('selectionOffsetY'),
         // 模型栏
         modelBar: document.getElementById('modelBar'),
         modelBarName: document.getElementById('modelBarName'),
         modelBarBadge: document.getElementById('modelBarBadge'),
         // 模型设置
         modelSelect: document.getElementById('modelSelect'),
-        addModelBtn: document.getElementById('addModelBtn'),
         removeModelBtn: document.getElementById('removeModelBtn'),
         modelProvider: document.getElementById('modelProvider'),
         modelProviderHint: document.getElementById('modelProviderHint'),
@@ -95,10 +97,6 @@ document.addEventListener('DOMContentLoaded', async function() {
       return ConfigService.displayName(entry);
     }
 
-    function hasApiKey(entry) {
-      return Boolean(entry && (entry.apiKey || '').trim());
-    }
-
     function isWebService(entry) {
       const type = (entry && entry.serviceType) || 'llm';
       return type === 'bing';
@@ -122,6 +120,23 @@ document.addEventListener('DOMContentLoaded', async function() {
       if (type) {
         elements.modelTestStatus.classList.add(`is-${type}`);
       }
+    }
+
+    // 由编辑器表单构建一条模型配置（尚未保存）
+    function buildEditorEntry() {
+      const providerId = elements.modelProvider.value || 'custom';
+      const provider = ConfigService.getProvider(providerId);
+      const isWeb = provider.type === 'bing';
+      const model = isWeb ? '' : elements.modelName.value.trim();
+      return {
+        id: ConfigService.identityKey(providerId, model),
+        providerId,
+        serviceType: provider.type || 'llm',
+        baseUrl: isWeb ? '' : elements.modelBaseUrl.value.trim(),
+        model,
+        apiKey: isWeb ? '' : elements.modelApiKey.value.trim(),
+        bodyJson: isWeb ? '{}' : (elements.modelBodyJson.value.trim() || '{}')
+      };
     }
 
     // ==================== 模型栏 / 面板状态 ====================
@@ -205,103 +220,41 @@ document.addEventListener('DOMContentLoaded', async function() {
       return ids;
     }
 
-    function flushEditorToWorking() {
-      const idx = workingModels.findIndex((item) => item.id === selectedModelId);
-      if (idx === -1) {
-        return;
-      }
-      const provider = ConfigService.getProvider(elements.modelProvider.value || 'custom');
-      if (provider.type === 'bing') {
-        workingModels[idx] = {
-          ...workingModels[idx],
-          id: ConfigService.identityKey(provider.id, ''),
-          providerId: provider.id,
-          serviceType: provider.type,
-          baseUrl: '',
-          model: '',
-          apiKey: '',
-          bodyJson: '{}'
-        };
-        refreshModelBar();
-        return;
-      }
-      const rawJson = elements.modelBodyJson.value.trim();
-      workingModels[idx] = {
-        ...workingModels[idx],
-        id: selectedModelId,
-        providerId: elements.modelProvider.value || 'custom',
-        serviceType: 'llm',
-        baseUrl: elements.modelBaseUrl.value.trim(),
-        model: elements.modelName.value.trim(),
-        apiKey: elements.modelApiKey.value.trim(),
-        bodyJson: rawJson || '{}'
-      };
-      refreshModelBar();
+    // 划词翻译关闭时，偏移输入置灰
+    function syncSelectionInputsDisabled() {
+      const enabled = elements.textSelectionEnabled.checked;
+      elements.selectionOffsetX.disabled = !enabled;
+      elements.selectionOffsetY.disabled = !enabled;
     }
 
-    function commitIdentity() {
-      flushEditorToWorking();
-      const idx = workingModels.findIndex((item) => item.id === selectedModelId);
-      if (idx === -1) {
-        return;
-      }
-
-      const entry = workingModels[idx];
-      const nextId = ConfigService.identityKey(entry.providerId, entry.model);
-      if (nextId === entry.id) {
-        const option = elements.modelSelect.querySelector(`option[value="${selectedModelId}"]`);
-        if (option) {
-          option.textContent = entryLabel(entry);
-        }
-        return;
-      }
-
-      const conflictIdx = workingModels.findIndex((item, index) => index !== idx && item.id === nextId);
-      if (conflictIdx !== -1) {
-        if (hasApiKey(entry) && !hasApiKey(workingModels[conflictIdx])) {
-          workingModels[conflictIdx] = {
-            ...workingModels[conflictIdx],
-            apiKey: entry.apiKey
-          };
-        }
-        workingModels.splice(idx, 1);
-        selectedModelId = nextId;
-        setTestStatus('该服务商已有相同模型 ID，已切换到已有配置', 'pending');
-      } else {
-        workingModels[idx] = { ...entry, id: nextId };
-        selectedModelId = nextId;
-      }
-      populateModelSelect();
+    // 偏移允许负值，默认 0，范围 -50~50
+    function clampOffsetSetting(input) {
+      const parsed = Number.parseInt(input.value, 10);
+      const value = Number.isFinite(parsed) ? Math.min(50, Math.max(-50, parsed)) : 0;
+      input.value = String(value);
+      return value;
     }
 
+    // 把某条配置填入编辑器；entry 为 null 时展示空编辑器（默认 Bing）
     function applyWorkingToEditor(entry) {
-      const isWeb = isWebService(entry);
+      const isWeb = entry ? isWebService(entry) : true;
       elements.llmOnlyFields.classList.toggle('hidden', isWeb);
       elements.advancedJson.classList.toggle('hidden', isWeb);
 
-      if (!entry) {
-        elements.modelProvider.value = 'deepseek';
-        elements.modelBaseUrl.value = '';
-        elements.modelName.value = '';
-        elements.modelApiKey.value = '';
-        elements.modelBodyJson.value = '{}';
-        elements.modelProviderHint.textContent = ConfigService.getProvider('deepseek').hint;
-        elements.advancedJson.open = false;
-        refreshModelBar();
-        return;
-      }
-
-      const providerId = ConfigService.inferProviderId(entry.baseUrl, entry.providerId);
-      elements.modelProvider.value = providerId;
-      elements.modelBaseUrl.value = entry.baseUrl || '';
-      elements.modelName.value = entry.model || '';
-      elements.modelApiKey.value = entry.apiKey || '';
-      elements.modelBodyJson.value = (entry.bodyJson || '').trim() || '{}';
-      elements.modelProviderHint.textContent = ConfigService.getProvider(providerId).hint;
-      elements.advancedJson.open = Boolean(!isWeb && entry.bodyJson && entry.bodyJson.trim() && entry.bodyJson.trim() !== '{}');
+      const provider = entry
+        ? ConfigService.getProvider(ConfigService.inferProviderId(entry.baseUrl, entry.providerId))
+        : ConfigService.getProvider('bing');
+      elements.modelProvider.value = provider.id;
+      elements.modelProviderHint.textContent = provider.hint;
+      elements.modelBaseUrl.value = entry ? entry.baseUrl || '' : '';
+      elements.modelName.value = entry ? entry.model || '' : '';
+      elements.modelApiKey.value = entry ? entry.apiKey || '' : '';
+      elements.modelBodyJson.value = (entry && entry.bodyJson) ? (entry.bodyJson.trim() || '{}') : '{}';
+      elements.advancedJson.open = false;
       refreshModelBar();
     }
 
+    // 仅重建下拉选项与选中值，不动编辑器内容
     function populateModelSelect() {
       const selectEl = elements.modelSelect;
       selectEl.innerHTML = '';
@@ -315,27 +268,23 @@ document.addEventListener('DOMContentLoaded', async function() {
 
       if (workingModels.length === 0) {
         selectedModelId = '';
-        applyWorkingToEditor(null);
         elements.removeModelBtn.disabled = true;
-        refreshModelBar();
         return;
       }
 
       elements.removeModelBtn.disabled = false;
-
+      // 仅当选中项已不存在（如删除后）才回退到第一个
       if (!workingModels.some((item) => item.id === selectedModelId)) {
         selectedModelId = workingModels[0].id;
       }
-
       selectEl.value = selectedModelId;
-      applyWorkingToEditor(currentEntry());
     }
 
     function ensureDefaultModel() {
       if (workingModels.length > 0) {
         return false;
       }
-      const created = ConfigService.createModelEntry('deepseek');
+      const created = ConfigService.createModelEntry();
       workingModels = [created];
       selectedModelId = created.id;
       return true;
@@ -355,6 +304,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         ensureDefaultModel();
         populateModelSelect();
+        applyWorkingToEditor(currentEntry());
 
         if (config.nativeLanguage) {
           elements.nativeLanguage.value = config.nativeLanguage;
@@ -365,10 +315,13 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
         elements.concurrentApiCalls.value = config.concurrentApiCalls || 3;
         elements.translationDisplayMode.value = config.translationDisplayMode || 'bilingual';
+        elements.textSelectionEnabled.checked = config.textSelectionEnabled !== false;
+        elements.selectionOffsetX.value = config.selectionOffsetX || 0;
+        elements.selectionOffsetY.value = config.selectionOffsetY || 0;
+        syncSelectionInputsDisabled();
 
         refreshModelBar();
 
-        // 注意：加载时不再自动保存默认模型，避免把存储里尚未迁移的旧版配置覆盖掉。
         if (!ConfigService.isModelReady(currentEntry())) {
           showView('settings');
           setTestStatus('请先填写 API Key，建议先点「测试连接」', 'pending');
@@ -470,6 +423,18 @@ document.addEventListener('DOMContentLoaded', async function() {
         });
       });
 
+      elements.textSelectionEnabled.addEventListener('change', () => {
+        syncSelectionInputsDisabled();
+        saveSettings();
+      });
+
+      [elements.selectionOffsetX, elements.selectionOffsetY].forEach((field) => {
+        field.addEventListener('change', () => {
+          clampOffsetSetting(field);
+          saveSettings();
+        });
+      });
+
       // 模型设置
       elements.testModelBtn.addEventListener('click', () => testModelConnection());
       elements.saveModelBtn.addEventListener('click', () => saveModelNow());
@@ -477,35 +442,29 @@ document.addEventListener('DOMContentLoaded', async function() {
       elements.showModelKeyBtn.addEventListener('click', () =>
         toggleApiKeyVisibility(elements.modelApiKey, elements.showModelKeyBtn));
 
+      // 手动选择已保存的模型：加载进编辑器并设为当前使用模型
       elements.modelSelect.addEventListener('change', () => {
-        const nextId = elements.modelSelect.value;
-        commitIdentity();
-        if (workingModels.some((item) => item.id === nextId)) {
-          selectedModelId = nextId;
-        }
+        selectedModelId = elements.modelSelect.value;
         applyWorkingToEditor(currentEntry());
         setTestStatus('', '');
         saveSettings();
       });
 
+      // 切换服务商：只更新编辑器表单，不改变列表与当前模型
       elements.modelProvider.addEventListener('change', () => {
-        switchProvider(elements.modelProvider.value);
-        saveSettings();
-      });
-
-      elements.addModelBtn.addEventListener('click', () => {
-        commitIdentity();
-        const created = ConfigService.nextUnusedEntry(workingModels);
-        workingModels.push(created);
-        selectedModelId = created.id;
-        populateModelSelect();
-        if (isWebService(created)) {
-          setTestStatus('免费接口，无需 API Key，可直接使用', 'pending');
-        } else {
-          setTestStatus('请填写该服务商的 API Key', 'pending');
-          elements.modelApiKey.focus();
+        const provider = ConfigService.getProvider(elements.modelProvider.value);
+        const isWeb = provider.type === 'bing';
+        elements.llmOnlyFields.classList.toggle('hidden', isWeb);
+        elements.advancedJson.classList.toggle('hidden', isWeb);
+        elements.modelProviderHint.textContent = provider.hint;
+        // 只有为空时才自动填入默认值
+        if (!isWeb && !elements.modelBaseUrl.value.trim()) {
+          elements.modelBaseUrl.value = provider.baseUrl || '';
         }
-        saveSettings();
+        if (!isWeb && !elements.modelName.value.trim() && provider.defaultModel) {
+          elements.modelName.value = provider.defaultModel;
+        }
+        setTestStatus('', '');
       });
 
       elements.removeModelBtn.addEventListener('click', () => {
@@ -515,41 +474,11 @@ document.addEventListener('DOMContentLoaded', async function() {
         if (!window.confirm('确定删除当前模型配置？')) {
           return;
         }
-        flushEditorToWorking();
         workingModels = workingModels.filter((item) => item.id !== selectedModelId);
         ensureDefaultModel();
         populateModelSelect();
+        applyWorkingToEditor(currentEntry());
         setTestStatus('', '');
-        saveSettings();
-      });
-
-      // 编辑字段：输入自动保存（防抖）
-      const autoSaveFields = [
-        elements.modelBaseUrl,
-        elements.modelApiKey,
-        elements.modelBodyJson
-      ];
-      let saveTimer = null;
-      autoSaveFields.forEach((field) => {
-        field.addEventListener('input', () => {
-          flushEditorToWorking();
-          clearTimeout(saveTimer);
-          saveTimer = setTimeout(() => {
-            saveSettings();
-          }, 400);
-        });
-        field.addEventListener('blur', () => {
-          clearTimeout(saveTimer);
-          flushEditorToWorking();
-          saveSettings();
-        });
-      });
-
-      elements.modelName.addEventListener('input', () => {
-        flushEditorToWorking();
-      });
-      elements.modelName.addEventListener('blur', () => {
-        commitIdentity();
         saveSettings();
       });
     }
@@ -573,11 +502,6 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
     }
 
-    async function persistCurrentEditor() {
-      commitIdentity();
-      return saveSettings();
-    }
-
     async function translateText() {
       console.log('Starting translation...');
       const text = elements.inputText.value.trim();
@@ -591,12 +515,6 @@ document.addEventListener('DOMContentLoaded', async function() {
       try {
         elements.loadingSpinner.classList.add('visible');
         elements.translateBtn.disabled = true;
-
-        const saved = await persistCurrentEditor();
-        if (!saved) {
-          elements.outputText.value = '保存设置失败，请检查配置后重试';
-          return;
-        }
 
         const config = await ConfigService.load();
         const translatedText = await ApiService.translate(text, config);
@@ -661,17 +579,11 @@ document.addEventListener('DOMContentLoaded', async function() {
       setTestStatus(`正在测试连接…（${timeoutSec}秒超时）`, 'pending');
 
       try {
-        const saved = await persistCurrentEditor();
+        const entry = buildEditorEntry();
         if (controller.signal.aborted) {
           setTestStatus('已取消测试', 'pending');
           return;
         }
-        if (!saved) {
-          setTestStatus('保存失败，未发起测试', 'error');
-          return;
-        }
-
-        const entry = currentEntry();
         const result = await ApiService.testConnection(entry, {
           signal: controller.signal,
           timeoutMs: ApiService.TEST_TIMEOUT_MS
@@ -694,8 +606,25 @@ document.addEventListener('DOMContentLoaded', async function() {
       }
     }
 
+    // 按「服务商 + 模型 ID」自动判断是新增还是更新
     async function saveModelNow() {
-      commitIdentity();
+      const entry = buildEditorEntry();
+      if (entry.serviceType !== 'bing' && !entry.model) {
+        setTestStatus('请填写模型 ID', 'error');
+        return;
+      }
+
+      const idx = workingModels.findIndex((item) => item.id === entry.id);
+      if (idx !== -1) {
+        workingModels[idx] = entry;
+        setTestStatus('已更新现有配置', 'success');
+      } else {
+        workingModels.push(entry);
+        setTestStatus('已添加新配置，可在下方列表手动选择使用', 'success');
+      }
+      populateModelSelect();
+      refreshModelBar();
+
       const ok = await saveSettings();
       if (ok) {
         const original = elements.saveModelBtn.textContent;
@@ -707,52 +636,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     // ==================== 模型编辑辅助 ====================
-
-    function switchProvider(providerId) {
-      flushEditorToWorking();
-      const provider = ConfigService.getProvider(providerId);
-      const previous = currentEntry();
-      const existing = ConfigService.findByIdentity(
-        workingModels,
-        provider.id,
-        provider.defaultModel
-      );
-
-      if (existing && previous && existing.id === previous.id) {
-        applyWorkingToEditor(existing);
-        return;
-      }
-
-      if (existing) {
-        if (previous && !hasApiKey(previous) && previous.id !== existing.id) {
-          workingModels = workingModels.filter((item) => item.id !== previous.id);
-        }
-        selectedModelId = existing.id;
-        populateModelSelect();
-        setTestStatus('', '');
-        return;
-      }
-
-      const created = ConfigService.createModelEntry(provider.id);
-      if (previous && !hasApiKey(previous)) {
-        const idx = workingModels.findIndex((item) => item.id === previous.id);
-        if (idx !== -1) {
-          workingModels[idx] = created;
-        } else {
-          workingModels.push(created);
-        }
-      } else {
-        workingModels.push(created);
-      }
-      selectedModelId = created.id;
-      populateModelSelect();
-      setTestStatus(
-        created.serviceType === 'bing'
-          ? `已切换到${provider.name}（免费，无需 API Key），可直接使用`
-          : '已切换服务商，请填写该服务商的 API Key',
-        'pending'
-      );
-    }
 
     function toggleApiKeyVisibility(inputElement, buttonElement) {
       const imgElement = buttonElement.querySelector('img');
@@ -770,7 +653,6 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     async function saveSettings() {
       try {
-        flushEditorToWorking();
         const config = await ConfigService.load();
         await ConfigService.save({
           ...config,
@@ -780,7 +662,10 @@ document.addEventListener('DOMContentLoaded', async function() {
           translationDisplayMode: elements.translationDisplayMode.value,
           maxApiCalls: clampSetting(elements.maxApiCalls, 10, 50),
           concurrentApiCalls: clampSetting(elements.concurrentApiCalls, 3, 20),
-          ignoredPageRegions: collectIgnoredRegions()
+          ignoredPageRegions: collectIgnoredRegions(),
+          textSelectionEnabled: elements.textSelectionEnabled.checked,
+          selectionOffsetX: clampOffsetSetting(elements.selectionOffsetX),
+          selectionOffsetY: clampOffsetSetting(elements.selectionOffsetY)
         });
         return true;
       } catch (error) {
@@ -841,11 +726,6 @@ document.addEventListener('DOMContentLoaded', async function() {
       try {
         elements.translateWebpageBtn.disabled = true;
         elements.pageStatus.textContent = '正在翻译当前网页…';
-
-        const saved = await persistCurrentEditor();
-        if (!saved) {
-          throw new Error('保存设置失败');
-        }
 
         const state = await sendToActiveTab({ action: 'translateWebpage' });
         if (!state || !state.success) {

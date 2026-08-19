@@ -8,7 +8,8 @@ const CONSTANTS = {
   },
   UI: {
     BUTTON_OFFSET_Y: 12,
-    DEBOUNCE_DELAY: 100
+    DEBOUNCE_DELAY: 100,
+    OFFSET_LIMIT: 50
   },
   ACTIONS: {
     GET_SELECTED_TEXT: 'getSelectedText',
@@ -31,6 +32,15 @@ const CONSTANTS = {
   }
 };
 
+// 将偏移值夹取到 ±50，非法输入回退 0
+function clampOffset(value) {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed)) {
+    return 0;
+  }
+  return Math.min(CONSTANTS.UI.OFFSET_LIMIT, Math.max(-CONSTANTS.UI.OFFSET_LIMIT, parsed));
+}
+
 // ==================== 主应用类 ====================
 class LLMTranslationContentScript {
   constructor() {
@@ -39,6 +49,10 @@ class LLMTranslationContentScript {
     this.translationPopup = null;
     this.isExtensionActive = true;
     this.services = {};
+    // 划词翻译配置（默认与设置面板一致）
+    this.selectionEnabled = true;
+    this.selectionOffsetX = 0;
+    this.selectionOffsetY = 0;
   }
 
   /**
@@ -47,16 +61,58 @@ class LLMTranslationContentScript {
   async initialize() {
     try {
       console.log('开始加载LLM翻译内容脚本');
-      
+
       await this.loadModules();
+      await this.loadSelectionSettings();
       this.setupEventListeners();
       this.markScriptReady();
-      
+
       console.log('LLM翻译内容脚本已成功加载');
     } catch (error) {
       console.error('初始化内容脚本时出错:', error);
       throw error;
     }
+  }
+
+  /**
+   * 加载划词翻译设置（开关 + 按钮位置），并监听设置变更即时生效
+   */
+  async loadSelectionSettings() {
+    try {
+      const items = await chrome.storage.local.get(null);
+      this.applySelectionSettings(items);
+    } catch (error) {
+      console.error('加载划词设置失败:', error);
+    }
+
+    chrome.storage.onChanged.addListener((changes, area) => {
+      if (area !== 'local') {
+        return;
+      }
+      const prevEnabled = this.selectionEnabled;
+      if (changes.textSelectionEnabled) {
+        this.selectionEnabled = changes.textSelectionEnabled.newValue !== false;
+      }
+      if (changes.selectionOffsetX) {
+        this.selectionOffsetX = clampOffset(changes.selectionOffsetX.newValue);
+      }
+      if (changes.selectionOffsetY) {
+        this.selectionOffsetY = clampOffset(changes.selectionOffsetY.newValue);
+      }
+      // 关闭划词时，清掉已显示的按钮与弹窗
+      if (prevEnabled && !this.selectionEnabled) {
+        this.cleanupUI();
+      }
+    });
+  }
+
+  /**
+   * 应用划词设置到实例字段（含兜底默认值）
+   */
+  applySelectionSettings(items) {
+    this.selectionEnabled = items.textSelectionEnabled !== false;
+    this.selectionOffsetX = clampOffset(items.selectionOffsetX);
+    this.selectionOffsetY = clampOffset(items.selectionOffsetY);
   }
 
   /**
@@ -299,9 +355,15 @@ class LLMTranslationContentScript {
     if (this.isEventFromTranslationUI(event)) {
       return;
     }
-    
+
+    // 划词翻译关闭时不响应，并清理可能残留的按钮/弹窗
+    if (!this.selectionEnabled) {
+      this.cleanupUI();
+      return;
+    }
+
     const selectedText = window.getSelection().toString().trim();
-    
+
     if (selectedText) {
       this.handleTextSelection(event);
     } else {
@@ -358,8 +420,10 @@ class LLMTranslationContentScript {
    * 计算按钮位置
    */
   calculateButtonPosition(event) {
-    const x = event.pageX || event.clientX + window.scrollX;
-    const y = (event.pageY || event.clientY + window.scrollY) + CONSTANTS.UI.BUTTON_OFFSET_Y;
+    // 「跟随选区」：紧贴鼠标位置下方，再叠加用户配置的 X/Y 偏移
+    const x = (event.pageX || event.clientX + window.scrollX) + this.selectionOffsetX;
+    const y = (event.pageY || event.clientY + window.scrollY)
+      + CONSTANTS.UI.BUTTON_OFFSET_Y + this.selectionOffsetY;
     return { x, y };
   }
 

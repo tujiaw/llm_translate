@@ -18,21 +18,29 @@
             maxApiCalls: 10,
             concurrentApiCalls: 3,
             translationDisplayMode: 'bilingual',
-            currentModelId: 'm1',
+            textSelectionEnabled: true,
+            selectionOffsetX: 0,
+            selectionOffsetY: 0,
+            currentModelId: 'deepseek::deepseek-v4-flash',
             models: [{
-              id: 'volcengine::doubao-pro-32k',
-              providerId: 'volcengine',
-              baseUrl: 'https://ark.cn-beijing.volces.com/api/v3',
-              model: 'doubao-pro-32k',
+              id: 'deepseek::deepseek-v4-flash',
+              providerId: 'deepseek',
+              baseUrl: 'https://api.deepseek.com/v1',
+              model: 'deepseek-v4-flash',
               apiKey: 'sk-test-123',
               bodyJson: '{}'
             }]
           },
           get: function (defaults, cb) {
             if (typeof defaults === 'function') { cb = defaults; defaults = {}; }
+            // 与真实 chrome.storage 一致：get(null) 返回全部键
             const result = {};
-            for (const k of Object.keys(defaults)) {
-              result[k] = (k in this._data) ? this._data[k] : defaults[k];
+            if (defaults === null) {
+              Object.assign(result, this._data);
+            } else {
+              for (const k of Object.keys(defaults)) {
+                result[k] = (k in this._data) ? this._data[k] : defaults[k];
+              }
             }
             window.chrome.runtime.lastError = null;
             cb(result);
@@ -48,8 +56,12 @@
           get: function (defaults, cb) {
             if (typeof defaults === 'function') { cb = defaults; defaults = {}; }
             const result = {};
-            for (const k of Object.keys(defaults)) {
-              result[k] = (k in this._data) ? this._data[k] : defaults[k];
+            if (defaults === null) {
+              Object.assign(result, this._data);
+            } else {
+              for (const k of Object.keys(defaults)) {
+                result[k] = (k in this._data) ? this._data[k] : defaults[k];
+              }
             }
             window.chrome.runtime.lastError = null;
             cb(result);
@@ -118,8 +130,12 @@
       <header class="popup-header">
         <h1 class="popup-title">LLM Translation</h1>
         <div class="header-actions">
-          <button type="button" id="openTranslationSettingsBtn" class="icon-btn" title="翻译设置" aria-label="翻译设置">译</button>
-          <button type="button" id="openSettingsBtn" class="icon-btn" title="模型设置" aria-label="模型设置">⚙</button>
+          <button type="button" id="openTranslationSettingsBtn" class="icon-btn" title="翻译设置" aria-label="翻译设置">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          </button>
+          <button type="button" id="openSettingsBtn" class="icon-btn" title="模型设置" aria-label="模型设置">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/></svg>
+          </button>
         </div>
       </header>
 
@@ -186,76 +202,109 @@
     <!-- ============ 模型设置视图 ============ -->
     <div id="settingsView" class="view hidden">
       <header class="settings-header">
-        <button type="button" id="backBtn" class="icon-btn" title="返回" aria-label="返回">←</button>
+        <button type="button" id="backBtn" class="back-btn" title="返回" aria-label="返回">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
         <h1 class="popup-title">模型设置</h1>
       </header>
 
-      <!-- 已保存的模型：用服务商 · 模型 ID 展示 -->
-      <label class="field-label" for="modelSelect">已保存的模型</label>
-      <div class="current-model-row">
+      <div class="settings-body">
+        <!-- 已保存的模型：用服务商 · 模型 ID 展示 -->
+        <label class="field-label" for="modelSelect">已保存的模型</label>
         <select id="modelSelect"></select>
-        <button type="button" id="addModelBtn" class="btn btn-secondary">＋ 添加</button>
-      </div>
 
-      <div class="divider"></div>
+        <div class="divider"></div>
 
-      <div id="modelEditor" class="model-editor">
-        <label class="field-label" for="modelProvider">服务商</label>
-        <select id="modelProvider"></select>
-        <p class="field-hint" id="modelProviderHint"></p>
+        <div id="modelEditor" class="model-editor">
+          <label class="field-label" for="modelProvider">服务商</label>
+          <select id="modelProvider"></select>
+          <p class="field-hint" id="modelProviderHint"></p>
 
-        <label class="field-label" for="modelName">模型 ID</label>
-        <input type="text" id="modelName" placeholder="如 deepseek-chat、doubao-pro-32k" autocomplete="off">
+          <div id="llmOnlyFields">
+            <label class="field-label" for="modelName">模型 ID</label>
+            <input type="text" id="modelName" placeholder="如 deepseek-v4-flash、gemini-3-flash-preview" autocomplete="off">
 
-        <label class="field-label" for="modelApiKey">API Key</label>
-        <div class="key-input-container">
-          <input type="password" id="modelApiKey" placeholder="粘贴该服务商的 API Key" autocomplete="off">
-          <button type="button" id="showModelKeyBtn" class="show-key-btn" title="显示/隐藏" aria-label="显示或隐藏 API Key">
-            <img src="images/eye-close.png" alt="Show" class="eye-icon">
-          </button>
+            <label class="field-label" for="modelApiKey">API Key</label>
+            <div class="key-input-container">
+              <input type="password" id="modelApiKey" placeholder="粘贴该服务商的 API Key" autocomplete="off">
+              <button type="button" id="showModelKeyBtn" class="show-key-btn" title="显示/隐藏" aria-label="显示或隐藏 API Key">
+                <img src="images/eye-close.png" alt="Show" class="eye-icon">
+              </button>
+            </div>
+            <p class="field-hint">Key 只保存在本机，且只用于当前服务商，不会带到其他服务商。</p>
+          </div>
+
+          <details class="advanced-json" id="advancedJson">
+            <summary>高级选项（可选）</summary>
+            <label class="field-label" for="modelBaseUrl">接口地址</label>
+            <input type="text" id="modelBaseUrl" placeholder="https://api.deepseek.com/v1" autocomplete="off">
+            <p class="field-hint">可只填到 /v1，扩展会自动补全 /chat/completions。</p>
+            <label class="field-label" for="modelBodyJson">自定义 Body JSON，会合并到请求体</label>
+            <textarea id="modelBodyJson" rows="3" placeholder='例如 {"temperature": 0.5}'></textarea>
+          </details>
+
+          <div class="model-test-row">
+            <button type="button" id="testModelBtn" class="btn btn-secondary">测试连接</button>
+            <button type="button" id="saveModelBtn" class="btn btn-primary">保存配置</button>
+          </div>
+          <span id="modelTestStatus" class="model-test-status" role="status"></span>
+
+          <button type="button" id="removeModelBtn" class="btn-danger">删除此配置</button>
         </div>
-        <p class="field-hint">Key 只保存在本机，且只用于当前服务商，不会带到其他服务商。</p>
-
-        <details class="advanced-json" id="advancedJson">
-          <summary>高级选项（可选）</summary>
-          <label class="field-label" for="modelBaseUrl">接口地址</label>
-          <input type="text" id="modelBaseUrl" placeholder="https://api.deepseek.com/v1" autocomplete="off">
-          <p class="field-hint">可只填到 /v1，扩展会自动补全 /chat/completions。</p>
-          <label class="field-label" for="modelBodyJson">自定义 Body JSON，会合并到请求体</label>
-          <textarea id="modelBodyJson" rows="3" placeholder='例如 {"temperature": 0.5}'></textarea>
-        </details>
-
-        <div class="model-test-row">
-          <button type="button" id="testModelBtn" class="btn btn-secondary">测试连接</button>
-          <button type="button" id="saveModelBtn" class="btn btn-primary">保存配置</button>
-        </div>
-        <span id="modelTestStatus" class="model-test-status" role="status"></span>
-
-        <button type="button" id="removeModelBtn" class="btn-danger">删除此配置</button>
       </div>
     </div>
 
     <!-- ============ 翻译设置视图 ============ -->
     <div id="translationSettingsView" class="view hidden">
       <header class="settings-header">
-        <button type="button" id="translationSettingsBackBtn" class="icon-btn" title="返回" aria-label="返回">←</button>
+        <button type="button" id="translationSettingsBackBtn" class="back-btn" title="返回" aria-label="返回">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 18l-6-6 6-6"/></svg>
+        </button>
         <h1 class="popup-title">翻译设置</h1>
       </header>
 
-      <label class="field-label" for="translationDisplayMode">展示样式</label>
-      <select id="translationDisplayMode">
-        <option value="bilingual">原文与译文对照</option>
-        <option value="replace">直接替换原文</option>
-      </select>
-      <p class="field-hint">直接替换模式类似浏览器网页翻译，可随时切回原文或恢复网页。</p>
+      <div class="settings-body">
+        <div class="settings-field-row">
+          <label class="field-label" for="translationDisplayMode">展示样式</label>
+          <select id="translationDisplayMode">
+            <option value="bilingual">原文与译文对照</option>
+            <option value="replace">直接替换原文</option>
+          </select>
+        </div>
+        <p class="field-hint">直接替换模式类似浏览器网页翻译，可随时切回原文或恢复网页。</p>
 
-      <label class="field-label" for="maxApiCalls">每个网页最多 API 调用次数</label>
-      <input type="number" id="maxApiCalls" min="1" max="50" value="10">
-      <p class="field-hint">范围 1–50。网页内容较多时，超过上限的批次不会继续请求。</p>
+        <div class="settings-field-row">
+          <label class="field-label" for="maxApiCalls">最多调用</label>
+          <input type="number" id="maxApiCalls" min="1" max="50" value="10">
+        </div>
+        <div class="settings-field-row">
+          <label class="field-label" for="concurrentApiCalls">并行调用</label>
+          <input type="number" id="concurrentApiCalls" min="1" max="20" value="3">
+        </div>
+        <p class="field-hint">同时发起的请求数不超过「最多调用」。最多 1–50，并行 1–20。</p>
 
-      <label class="field-label" for="concurrentApiCalls">并行调用次数</label>
-      <input type="number" id="concurrentApiCalls" min="1" max="20" value="3">
-      <p class="field-hint">同时发起的模型请求数，默认为 3；实际并行数不会超过本页调用上限。</p>
+        <div class="divider"></div>
+
+        <label class="field-label">忽略的区域</label>
+        <div id="ignoredPageRegions" class="region-checkbox-group"></div>
+        <p class="field-hint">页头/页脚默认忽略，可随时取消勾选。</p>
+
+        <div class="divider"></div>
+
+        <div class="settings-field-row">
+          <label class="field-label" for="textSelectionEnabled">划词翻译</label>
+          <input type="checkbox" id="textSelectionEnabled">
+        </div>
+        <div class="settings-field-row">
+          <label class="field-label" for="selectionOffsetX">横向偏移</label>
+          <input type="number" id="selectionOffsetX" min="-50" max="50" step="1" value="0">
+        </div>
+        <div class="settings-field-row">
+          <label class="field-label" for="selectionOffsetY">纵向偏移</label>
+          <input type="number" id="selectionOffsetY" min="-50" max="50" step="1" value="0">
+        </div>
+        <p class="field-hint">在网页上选中文字后自动显示翻译按钮；偏移单位为像素，在默认跟随选区的按钮位置上再微调，避免与其他插件按钮重叠。</p>
+      </div>
     </div>
 
   </div>

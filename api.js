@@ -48,23 +48,11 @@ class ApiService {
     }
   }
 
-  static buildHeaders(entry, apiKey) {
-    const headers = {
+  static buildHeaders(apiKey) {
+    return {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${apiKey}`
     };
-
-    try {
-      const host = new URL(entry.baseUrl).hostname.toLowerCase();
-      if (host.includes('openrouter.ai')) {
-        headers['HTTP-Referer'] = 'https://github.com/llm_translate';
-        headers['X-Title'] = 'LLM Translation';
-      }
-    } catch {
-      // 无效 URL 由后续校验处理
-    }
-
-    return headers;
   }
 
   static deepMerge(target, source) {
@@ -148,6 +136,8 @@ class ApiService {
     delete body.enable_thinking;
     delete body.thinking;
     delete body.thinking_budget;
+    delete body.thinking_level;
+    delete body.thinkingConfig;
     delete body.reasoning;
     delete body.reasoning_effort;
     delete body.reasoning_format;
@@ -157,20 +147,15 @@ class ApiService {
       body.thinking = { type: 'disabled' };
     } else if (providerId === 'dashscope') {
       body.enable_thinking = false;
-    } else if (providerId === 'siliconflow') {
-      body.enable_thinking = false;
     } else if (providerId === 'zhipu') {
       body.thinking = { type: 'disabled' };
-    } else if (providerId === 'volcengine') {
-      body.thinking = { type: 'disabled' };
-    } else if (providerId === 'moonshot' && /kimi|thinking|reasoner/.test(modelName)) {
-      body.thinking = { type: 'disabled' };
-    } else if (providerId === 'openrouter') {
-      body.reasoning = { effort: 'none' };
-    } else if (providerId === 'ollama' && !/gpt-oss/.test(modelName)) {
-      body.reasoning_effort = 'none';
-    } else if (providerId === 'groq' && /qwen/.test(modelName)) {
-      body.reasoning_effort = 'none';
+    } else if (providerId === 'gemini') {
+      // Gemini 3 起改用 thinkingLevel，2.5 及更早用 thinkingBudget，两套参数不能混用
+      if (/^gemini-3/.test(modelName)) {
+        body.thinkingConfig = { thinkingLevel: 'minimal' };
+      } else {
+        body.thinkingConfig = { thinkingBudget: 0 };
+      }
     } else if (providerId === 'openai' && /^gpt-5\.(?:[1-9]\d*)/.test(modelName)) {
       body.reasoning_effort = 'none';
     }
@@ -335,22 +320,12 @@ class ApiService {
     return [`HTTP ${response.status}`, message, hint].filter(Boolean).join(' — ');
   }
 
-  static describeNetworkError(error, apiEndpoint) {
+  static describeNetworkError(error) {
     const raw = error?.message || String(error);
     if (!raw.includes('Failed to fetch') && error?.name !== 'TypeError') {
       return raw;
     }
-
-    let extra = '无法连接到接口，请检查网络、地址和本地服务是否已启动。';
-    try {
-      const host = new URL(apiEndpoint).hostname;
-      if (host === 'localhost' || host === '127.0.0.1') {
-        extra = '无法连接本地服务。请确认 Ollama 等已启动，地址一般为 http://localhost:11434/v1。';
-      }
-    } catch {
-      // 忽略 URL 解析失败
-    }
-    return extra;
+    return '无法连接到接口，请检查网络和接口地址。';
   }
 
   static mergeAbortSignals(signals) {
@@ -408,7 +383,7 @@ class ApiService {
     try {
       const fetchOptions = {
         method: 'POST',
-        headers: this.buildHeaders(entry, apiKey),
+        headers: this.buildHeaders(apiKey),
         body: JSON.stringify(requestBody)
       };
       if (options.signal) {
@@ -430,7 +405,7 @@ class ApiService {
       if (error && typeof error.message === 'string' && error.message.startsWith('HTTP ')) {
         throw error;
       }
-      throw new Error(this.describeNetworkError(error, apiEndpoint));
+      throw new Error(this.describeNetworkError(error));
     }
   }
 

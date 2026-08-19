@@ -15,12 +15,10 @@ const CONSTANTS = {
     DELAY_MS: 1000
   },
   MENU_IDS: {
-    TRANSLATE_WEBPAGE: 'translateWebpage',
-    CLEAR_TRANSLATIONS: 'clearTranslations'
+    TRANSLATE_WEBPAGE: 'translateWebpage'
   },
   ACTIONS: {
     TRANSLATE_WEBPAGE: 'translateWebpage',
-    CLEAR_WEBPAGE_TRANSLATIONS: 'clearWebpageTranslations',
     PERFORM_TRANSLATION: 'performTranslation',
     GET_CONFIG: 'getConfig',
     TRANSLATE: 'translate'
@@ -37,7 +35,7 @@ initializeExtension();
 function initializeExtension() {
   initializeConfig();
   setupMessageListeners();
-  // createContextMenus();
+  createContextMenus();
 }
 
 // ==================== 配置管理 ====================
@@ -75,18 +73,13 @@ function createContextMenus() {
     const menuItems = [
       {
         id: CONSTANTS.MENU_IDS.TRANSLATE_WEBPAGE,
-        title: '翻译当前网页',
-        contexts: ['page', 'frame']
-      },
-      {
-        id: CONSTANTS.MENU_IDS.CLEAR_TRANSLATIONS,
-        title: '清除页面翻译',
+        title: '翻译此网页',
         contexts: ['page', 'frame']
       }
     ];
 
     menuItems.forEach(item => chrome.contextMenus.create(item));
-    
+
     chrome.contextMenus.onClicked.addListener(handleContextMenuClick);
     console.log('已创建右键菜单');
   });
@@ -104,8 +97,7 @@ function handleContextMenuClick(info, tab) {
   }
 
   const menuHandlers = {
-    [CONSTANTS.MENU_IDS.TRANSLATE_WEBPAGE]: () => handleWebpageTranslation(tab),
-    [CONSTANTS.MENU_IDS.CLEAR_TRANSLATIONS]: () => handleClearTranslations(tab)
+    [CONSTANTS.MENU_IDS.TRANSLATE_WEBPAGE]: () => handleWebpageTranslation(tab)
   };
 
   const handler = menuHandlers[info.menuItemId];
@@ -131,15 +123,6 @@ function isValidTab(tab) {
 function handleWebpageTranslation(tab) {
   console.log('开始翻译网页');
   sendMessageWithRetry(tab.id, { action: CONSTANTS.ACTIONS.TRANSLATE_WEBPAGE }, '翻译网页');
-}
-
-/**
- * 处理清除翻译请求
- * @param {Object} tab - 当前标签页对象
- */
-function handleClearTranslations(tab) {
-  console.log('清除页面翻译:', tab.url);
-  sendMessageWithRetry(tab.id, { action: CONSTANTS.ACTIONS.CLEAR_WEBPAGE_TRANSLATIONS }, '清除翻译');
 }
 
 // ==================== 通用消息发送系统 ====================
