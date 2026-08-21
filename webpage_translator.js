@@ -468,10 +468,8 @@ Each line has a format of "ID:::Text". Preserve the exact ID and translate only 
 Your response must follow the same format of "ID:::Translated Text" and have exactly the same number of lines as the input.
 Do not add any explanation or additional content.`;
       
-      const entry = ConfigService.getCurrentModel(config);
-      if (!entry) {
-        throw new Error('Model information not found: no model selected');
-      }
+      // 未选择任何模型时自动回退到 Bing 免费翻译，首次安装即可整页翻译。
+      const entry = ConfigService.getModelEntryOrBing(config);
 
       if (entry.serviceType === 'bing') {
         return this.batchTranslateViaWebService(nodeItems, config, entry, signal, reserveApiCall);

@@ -97,10 +97,7 @@ class ApiService {
   }
 
   static resolveCurrentModelEntry(config) {
-    const entry = ConfigService.getCurrentModel(config);
-    if (!entry) {
-      throw new Error('请先在扩展设置中添加并选择一个模型');
-    }
+    const entry = ConfigService.getModelEntryOrBing(config);
     this.assertModelEntry(entry);
     return entry;
   }

@@ -149,6 +149,14 @@ document.addEventListener('DOMContentLoaded', async function() {
       elements.modelBarBadge.classList.toggle('is-ready', ready);
     }
 
+    // 切换当前使用的模型：同步编辑器与模型栏，并立即持久化，无需再点保存。
+    function selectModel(modelId) {
+      selectedModelId = modelId;
+      applyWorkingToEditor(currentEntry());
+      setTestStatus('', '');
+      saveSettings();
+    }
+
     function showView(name) {
       const showSettings = name === 'settings';
       const showTranslationSettings = name === 'translationSettings';
@@ -442,12 +450,9 @@ document.addEventListener('DOMContentLoaded', async function() {
       elements.showModelKeyBtn.addEventListener('click', () =>
         toggleApiKeyVisibility(elements.modelApiKey, elements.showModelKeyBtn));
 
-      // 手动选择已保存的模型：加载进编辑器并设为当前使用模型
+      // 手动选择已保存的模型：设为当前使用模型并立即生效
       elements.modelSelect.addEventListener('change', () => {
-        selectedModelId = elements.modelSelect.value;
-        applyWorkingToEditor(currentEntry());
-        setTestStatus('', '');
-        saveSettings();
+        selectModel(elements.modelSelect.value);
       });
 
       // 切换服务商：只更新编辑器表单，不改变列表与当前模型
@@ -653,9 +658,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
     async function saveSettings() {
       try {
-        const config = await ConfigService.load();
         await ConfigService.save({
-          ...config,
           nativeLanguage: elements.nativeLanguage.value,
           models: cloneModels(workingModels),
           currentModelId: selectedModelId,

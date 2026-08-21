@@ -337,7 +337,8 @@ async function performTranslation(text, tabId) {
     logConfigInfo(config, '翻译请求加载的');
 
     const entry = ConfigService.getCurrentModel(config);
-    if (!ConfigService.isModelReady(entry)) {
+    // 已选择但未配置完整的 LLM 模型才提示；未选择任何模型时由下方翻译流程自动回退到 Bing。
+    if (entry && !ConfigService.isModelReady(entry)) {
       const errorMessage = '请先在扩展中选择服务商并填写 API Key，建议先点「测试连接」。';
       sendMessageToTab(tabId, CONSTANTS.ACTIONS.TRANSLATE, text, errorMessage, true);
       return;

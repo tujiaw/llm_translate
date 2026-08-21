@@ -308,6 +308,20 @@ class ConfigService {
     }
     return config.models.find((item) => item.id === config.currentModelId) || null;
   }
+
+  /**
+   * 获取当前模型条目；未选择任何模型时返回 Bing 兜底条目，
+   * 保证首次安装、尚未配置模型时也能直接使用免费翻译。
+   * @param {object} config - 配置对象
+   * @returns {object} 当前模型条目或 Bing 兜底条目
+   */
+  static getModelEntryOrBing(config) {
+    const entry = this.getCurrentModel(config);
+    if (entry) {
+      return entry;
+    }
+    return this.createModelEntry('bing');
+  }
 }
 
 export { MODEL_PROVIDERS, PAGE_REGION_OPTIONS };
