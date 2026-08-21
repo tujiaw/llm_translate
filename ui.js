@@ -24,6 +24,7 @@ class UiService {
 
     const button = document.createElement('div');
     button.className = 'llm-translate-button';
+    button.dataset.ningto20170704 = '';
     button.style.left = `${x}px`;
     button.style.top = `${y}px`;
 
@@ -100,6 +101,7 @@ class UiService {
   static createLoadingPopup(x, y) {
     const popup = document.createElement('div');
     popup.className = 'llm-translation-popup';
+    popup.dataset.ningto20170704 = '';
     popup.style.left = `${x}px`;
     popup.style.top = `${y}px`;
 
@@ -131,6 +133,7 @@ class UiService {
       try {
         const textarea = document.createElement('textarea');
         textarea.value = text;
+        textarea.dataset.ningto20170704 = '';
         textarea.style.position = 'fixed';
         textarea.style.opacity = '0';
         textarea.style.pointerEvents = 'none';
@@ -210,6 +213,7 @@ class UiService {
   static showNotification(message, type = 'info', duration = 3000) {
     const notification = document.createElement('div');
     notification.className = `llm-notification llm-notification-${type}`;
+    notification.dataset.ningto20170704 = '';
     notification.textContent = message;
     
     // 设置样式

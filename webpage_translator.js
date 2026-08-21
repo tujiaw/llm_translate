@@ -41,12 +41,12 @@ class WebpageTranslatorService {
   static LIVE_BURST_MAX_NODES = 90;   // 10s 窗口内的节点预算（软限流，超出后顺延节奏）
   static LIVE_MAX_NODES_PER_RUN = 30; // 每轮最多翻译的节点数
   // 扩展自身注入的所有 UI 与译文标记的统一标识。
-  // 自建浮层（状态框、划词按钮/弹窗、通知）在根节点打上 data-llm-ui 标记，
-  // 用 [data-llm-ui] 整体识别——不按类名前缀猜，避免误伤网页里自带的 llm-* 类。
+  // 自建浮层（状态框、划词按钮/弹窗、通知）在根节点打上 data-ningto20170704 标记，
+  // 用 [data-ningto20170704] 整体识别——不按类名前缀猜，避免误伤网页里自带的 llm-* 类。
   // 译文标记是注入到页面里的，单独列出。文本收集与 mutation 过滤都靠 closest 排除，
   // 否则浮层里固定定位、恒在视口内的文本会被当成页面内容反复翻译。
   static SELF_OWNED_UI_SELECTOR = [
-    '[data-llm-ui]',             // 自建浮层根节点（状态框/划词按钮/弹窗/通知）
+    '[data-ningto20170704]',             // 自建浮层根节点（状态框/划词按钮/弹窗/通知）
     '.llm-translation-source',   // 已翻译的段落 / 文本节点原文包裹
     '.llm-translation-original', // 文本节点粒度的原文包裹 span
     '.llm-translation-label'     // 注入的译文标签
@@ -261,7 +261,9 @@ class WebpageTranslatorService {
       document.body,
       NodeFilter.SHOW_TEXT,
       {
-        acceptNode: function(node) {
+        // 必须用箭头函数：普通函数里 this 会指向过滤器对象而非本类，
+        // 导致 this.SELF_OWNED_UI_SELECTOR 为 undefined、排除条件静默失效。
+        acceptNode: (node) => {
           const parent = node.parentElement;
 
           // 排除特定标签；扩展自身注入的 UI（划词按钮/弹窗、通知、状态框）与
@@ -982,6 +984,7 @@ Do not add any explanation or additional content.`;
     if (!statusBox) {
       statusBox = document.createElement('div');
       statusBox.id = 'llm-translation-status';
+      statusBox.dataset.ningto20170704 = '';
       document.body.appendChild(statusBox);
     }
 
@@ -1009,6 +1012,7 @@ Do not add any explanation or additional content.`;
     if (!statusBox) {
       statusBox = document.createElement('div');
       statusBox.id = 'llm-translation-status';
+      statusBox.dataset.ningto20170704 = '';
       document.body.appendChild(statusBox);
     }
 
@@ -1073,6 +1077,7 @@ Do not add any explanation or additional content.`;
     if (!statusBox) {
       statusBox = document.createElement('div');
       statusBox.id = 'llm-translation-status';
+      statusBox.dataset.ningto20170704 = '';
       document.body.appendChild(statusBox);
     }
 
@@ -1401,7 +1406,8 @@ Do not add any explanation or additional content.`;
           this.displayTranslations(rawNodes, expandedTranslations, config.translationDisplayMode);
           this.liveRecentRuns.push({ ts: Date.now(), count: rawNodes.length });
           this.showTranslationComplete(`已翻译新增 ${rawNodes.length} 段文本`);
-          console.log(`[live] 增量翻译 ${rawNodes.length} 段`);
+          // 诊断：打印本次实际翻译的文本，便于确认「1 段」是不是我们自建 UI 漏进来的
+          console.log(`[live] 增量翻译 ${rawNodes.length} 段:`, rawNodes.map((n) => JSON.stringify(n.text)));
         }
       }
 
