@@ -333,21 +333,11 @@ async function performTranslation(text, tabId) {
   }
 
   try {
-    const config = await ConfigService.load();
-    logConfigInfo(config, '翻译请求加载的');
-
-    const entry = ConfigService.getCurrentModel(config);
-    // 已选择但未配置完整的 LLM 模型才提示；未选择任何模型时由下方翻译流程自动回退到 Bing。
-    if (entry && !ConfigService.isModelReady(entry)) {
-      const errorMessage = '请先在扩展中选择服务商并填写 API Key，建议先点「测试连接」。';
-      sendMessageToTab(tabId, CONSTANTS.ACTIONS.TRANSLATE, text, errorMessage, true);
-      return;
-    }
-
+    // 模型解析与 Bing 兜底都在 TranslatorService/ApiService 内完成，无需在此预检查。
     const translatedText = await TranslatorService.translate(text);
     console.log('翻译成功:', translatedText);
     sendMessageToTab(tabId, CONSTANTS.ACTIONS.TRANSLATE, text, translatedText, false);
   } catch (error) {
     handleTranslationError(error, '翻译过程中出错', tabId, text);
   }
-} 
+}
