@@ -4,7 +4,7 @@ const DEFAULT_CONFIG = {
   nativeLanguage: 'zh',
   models: [],
   currentModelId: '',
-  maxApiCalls: 10,
+  maxApiCalls: 20,
   concurrentApiCalls: 3,
   translationDisplayMode: 'bilingual',
   ignoredPageRegions: ['header', 'footer'],
@@ -22,6 +22,14 @@ const PAGE_REGION_OPTIONS = [
   { id: 'aside', name: '侧边栏' },
   { id: 'form', name: '表单' },
   { id: 'dialog', name: '弹窗/对话框' }
+];
+
+// 译文展示样式（id 与设置面板展示名）；bilingual 为默认
+const TRANSLATION_DISPLAY_OPTIONS = [
+  { id: 'bilingual', name: '双语对照', hint: '原文在上，译文在下方（默认）' },
+  { id: 'translation-only', name: '仅显示译文', hint: '隐藏原文，只显示译文' },
+  { id: 'hover', name: '悬停显示译文', hint: '默认只显示原文，鼠标悬停时显示译文' },
+  { id: 'replace', name: '直接替换原文', hint: '用译文替换原文' }
 ];
 
 // 服务商列表：Bing 置顶（免费免 Key），随后为国内外主流 LLM 厂商
@@ -101,6 +109,10 @@ class ConfigService {
 
   static getPageRegionOptions() {
     return PAGE_REGION_OPTIONS;
+  }
+
+  static getDisplayModes() {
+    return TRANSLATION_DISPLAY_OPTIONS;
   }
 
   static getProvider(providerId) {
@@ -238,8 +250,10 @@ class ConfigService {
         DEFAULT_CONFIG.concurrentApiCalls,
         20
       ),
-      translationDisplayMode: config.translationDisplayMode === 'replace'
-        ? 'replace'
+      translationDisplayMode: TRANSLATION_DISPLAY_OPTIONS.some(
+        (item) => item.id === config.translationDisplayMode
+      )
+        ? config.translationDisplayMode
         : DEFAULT_CONFIG.translationDisplayMode,
       ignoredPageRegions,
       textSelectionEnabled: config.textSelectionEnabled !== false,
@@ -324,7 +338,7 @@ class ConfigService {
   }
 }
 
-export { MODEL_PROVIDERS, PAGE_REGION_OPTIONS };
+export { MODEL_PROVIDERS, PAGE_REGION_OPTIONS, TRANSLATION_DISPLAY_OPTIONS };
 export default ConfigService;
 
 if (typeof self !== 'undefined' && self.constructor && self.constructor.name === 'ServiceWorkerGlobalScope') {

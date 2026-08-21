@@ -189,6 +189,32 @@ body.llm-translations-hidden .llm-translation-label {
   display: none !important;
 }
 
+/* ===== 译文展示样式（由 <body data-llm-display="..."> 控制） ===== */
+
+/* 悬停显示译文：默认只显示原文，悬停段落时显示译文 */
+body[data-llm-display="hover"] .llm-translation-br,
+body[data-llm-display="hover"] .llm-translation-label {
+  display: none;
+}
+body[data-llm-display="hover"] .llm-translation-source:hover > .llm-translation-br,
+body[data-llm-display="hover"] .llm-translation-source:hover > .llm-translation-label {
+  display: inline;
+}
+
+/* 仅显示译文：隐藏原文与换行，只显示译文 */
+body[data-llm-display="translation-only"] .llm-translation-original,
+body[data-llm-display="translation-only"] .llm-translation-br {
+  display: none;
+}
+
+/* 显示原文：隐藏译文与换行，恢复原文可见 */
+body.llm-translations-hidden .llm-translation-original {
+  display: inline !important;
+}
+body.llm-translations-hidden .llm-translation-br {
+  display: none !important;
+}
+
 /* 全网页翻译状态框样式 */
 #llm-translation-status {
   position: fixed;

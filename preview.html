@@ -15,7 +15,7 @@
         local: {
           _data: {
             nativeLanguage: 'zh',
-            maxApiCalls: 10,
+            maxApiCalls: 20,
             concurrentApiCalls: 3,
             translationDisplayMode: 'bilingual',
             textSelectionEnabled: true,
@@ -266,16 +266,13 @@
       <div class="settings-body">
         <div class="settings-field-row">
           <label class="field-label" for="translationDisplayMode">展示样式</label>
-          <select id="translationDisplayMode">
-            <option value="bilingual">原文与译文对照</option>
-            <option value="replace">直接替换原文</option>
-          </select>
+          <select id="translationDisplayMode"></select>
         </div>
-        <p class="field-hint">直接替换模式类似浏览器网页翻译，可随时切回原文或恢复网页。</p>
+        <p class="field-hint">双语对照为默认；还有仅显示译文、悬停显示译文、直接替换原文等样式可选。</p>
 
         <div class="settings-field-row">
           <label class="field-label" for="maxApiCalls">最多调用</label>
-          <input type="number" id="maxApiCalls" min="1" max="50" value="10">
+          <input type="number" id="maxApiCalls" min="1" max="50" value="20">
         </div>
         <div class="settings-field-row">
           <label class="field-label" for="concurrentApiCalls">并行调用</label>

@@ -203,6 +203,17 @@ document.addEventListener('DOMContentLoaded', async function() {
       });
     }
 
+    function populateDisplayModeSelect() {
+      elements.translationDisplayMode.innerHTML = '';
+      ConfigService.getDisplayModes().forEach((mode) => {
+        const option = document.createElement('option');
+        option.value = mode.id;
+        option.textContent = mode.name;
+        option.title = mode.hint;
+        elements.translationDisplayMode.appendChild(option);
+      });
+    }
+
     function renderRegionCheckboxes(selectedIds) {
       elements.ignoredPageRegions.innerHTML = '';
       const selected = new Set(Array.isArray(selectedIds) ? selectedIds : ['header', 'footer']);
@@ -308,6 +319,7 @@ document.addEventListener('DOMContentLoaded', async function() {
 
         populateLanguageSelect(elements.nativeLanguage);
         populateProviderSelect();
+        populateDisplayModeSelect();
         renderRegionCheckboxes(config.ignoredPageRegions);
 
         ensureDefaultModel();
@@ -426,7 +438,7 @@ document.addEventListener('DOMContentLoaded', async function() {
       [elements.maxApiCalls, elements.concurrentApiCalls].forEach((field) => {
         field.addEventListener('change', () => {
           const isMaxCalls = field === elements.maxApiCalls;
-          clampSetting(field, isMaxCalls ? 10 : 3, isMaxCalls ? 50 : 20);
+          clampSetting(field, isMaxCalls ? 20 : 3, isMaxCalls ? 50 : 20);
           saveSettings();
         });
       });
@@ -663,7 +675,7 @@ document.addEventListener('DOMContentLoaded', async function() {
           models: cloneModels(workingModels),
           currentModelId: selectedModelId,
           translationDisplayMode: elements.translationDisplayMode.value,
-          maxApiCalls: clampSetting(elements.maxApiCalls, 10, 50),
+          maxApiCalls: clampSetting(elements.maxApiCalls, 20, 50),
           concurrentApiCalls: clampSetting(elements.concurrentApiCalls, 3, 20),
           ignoredPageRegions: collectIgnoredRegions(),
           textSelectionEnabled: elements.textSelectionEnabled.checked,
@@ -723,9 +735,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     }
 
     async function translateWebpage() {
-      if (!ensureModelReady()) {
-        return;
-      }
       try {
         elements.translateWebpageBtn.disabled = true;
         elements.pageStatus.textContent = '正在翻译当前网页…';

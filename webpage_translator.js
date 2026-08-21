@@ -11,24 +11,46 @@ import ConfigService from './config.js';
 class WebpageTranslatorService {
   static activeTranslationController = null;
   static replacedTextNodes = new Map();
+  // 完成提示的淡出定时器：下一次翻译开始时必须清理，避免旧定时器把新提示框移除
+  static statusBoxFadeTimer = null;
   // 滚动/懒加载新内容的自动翻译（live 模式）
   static liveObserver = null;
   static liveTimer = null;
-  static liveLastRunAt = 0;
+  static liveLastSyncAt = 0;
   static liveConfig = null;
+  // live 翻译的取消控制器：终止增量翻译时中止进行中的请求
+  static liveAbortController = null;
   static liveRunId = 0;
-  // 异常情况防护（不做硬上限，只针对病态反复调用）：
+  // 唯一事实来源：已翻译文本 -> 译文。译文==原文的 identity 也记录在此（文本->文本）。
+  // 由 displayTranslations 写入；sync() 只读。缓存命中即可零 API 恢复/免重译。
+  static liveCache = new Map();
+  // 少量异常防护（不做硬上限，只针对病态反复）：
   // - liveInFlight：正在翻译中的文本，防止并发轮次重复调用同一内容
   // - liveFailedTexts：近期翻译失败的文本（服务异常时避免每轮都重试）
-  // - livePausedUntil / liveRecentRuns：页面异常持续刷内容时，熔断暂停片刻后自动恢复
+  // - liveRecentRuns：滑动窗口预算，高频新内容时限流节奏而不是整体暂停
   static liveInFlight = new Set();
   static liveFailedTexts = new Map();
-  static livePausedUntil = 0;
+  // 防循环：页面反复抹掉我们刚恢复的译文（框架在重写该区域）时，
+  // 累计 liveFights 后进入 liveBackoffUntil 静默期，不再跟页面打架。
+  static liveBackoffUntil = 0;
+  static liveFights = 0;
   static liveRecentRuns = [];
+  static liveScrollHandler = null;
   static LIVE_FAIL_COOLDOWN_MS = 30000;
   static LIVE_BURST_WINDOW_MS = 10000;
-  static LIVE_BURST_MAX_NODES = 30;
-  static LIVE_PAUSE_MS = 20000;
+  static LIVE_BURST_MAX_NODES = 90;   // 10s 窗口内的节点预算（软限流，超出后顺延节奏）
+  static LIVE_MAX_NODES_PER_RUN = 30; // 每轮最多翻译的节点数
+  // 扩展自身注入的所有 UI 与译文标记的统一标识。
+  // 自建浮层（状态框、划词按钮/弹窗、通知）在根节点打上 data-llm-ui 标记，
+  // 用 [data-llm-ui] 整体识别——不按类名前缀猜，避免误伤网页里自带的 llm-* 类。
+  // 译文标记是注入到页面里的，单独列出。文本收集与 mutation 过滤都靠 closest 排除，
+  // 否则浮层里固定定位、恒在视口内的文本会被当成页面内容反复翻译。
+  static SELF_OWNED_UI_SELECTOR = [
+    '[data-llm-ui]',             // 自建浮层根节点（状态框/划词按钮/弹窗/通知）
+    '.llm-translation-source',   // 已翻译的段落 / 文本节点原文包裹
+    '.llm-translation-original', // 文本节点粒度的原文包裹 span
+    '.llm-translation-label'     // 注入的译文标签
+  ].join(', ');
 
   /**
    * 粗略估算文本 token：中日韩字符约 1 token，其余字符约 4 字符/token。
@@ -108,18 +130,12 @@ class WebpageTranslatorService {
   }
 
   /**
-   * 获取页面中所有可翻译单元。对照模式按段落聚合，替换模式保留文本节点粒度。
-   * @param {'bilingual'|'replace'} displayMode - 译文展示方式
+   * 获取页面中所有可翻译单元。对照/悬停模式按段落聚合，其余模式保留文本节点粒度。
+   * @param {'bilingual'|'translation-only'|'hover'|'replace'} displayMode - 译文展示方式
    * @returns {Array<{node: Node, text: string, id: string}>} 可翻译单元数组
    */
   static getTranslatableNodes(displayMode = 'bilingual', config) {
     const excludeTags = ['SCRIPT', 'STYLE', 'NOSCRIPT', 'IFRAME', 'OBJECT', 'EMBED', 'HEAD', 'META', 'TITLE', 'LINK'];
-    const excludeClasses = [
-      'llm-translation-label',
-      'llm-translate-button',
-      'llm-translation-popup',
-      'llm-status-text'
-    ];
 
     // 按配置忽略页面区域（页头/页脚/导航等），默认忽略 header/footer。
     const regionSelectors = {
@@ -171,6 +187,9 @@ class WebpageTranslatorService {
     // 代码容器的标识符
     const codeContainers = ['PRE', 'CODE', 'SAMP', 'KBD'];
     const translateNodes = [];
+    // 文本节点粒度模式（与 replace 一致）：仅显示译文。其余模式按段落聚合。
+    const isTextGranularity = displayMode === 'replace'
+      || displayMode === 'translation-only';
 
     // 预编译代码相关类名的匹配正则（替代每个祖先都 Array.from(classList)）
     const codeClassPattern = codeClasses
@@ -245,11 +264,12 @@ class WebpageTranslatorService {
         acceptNode: function(node) {
           const parent = node.parentElement;
 
-          // 排除特定标签和类
+          // 排除特定标签；扩展自身注入的 UI（划词按钮/弹窗、通知、状态框）与
+          // 译文标记整体排除——用 closest 覆盖任意嵌套深度，深层文本也不会漏进来
+          // （position: fixed 的浮层永远在视口内，不排除会被当成新内容反复翻译）。
           if (!parent ||
               excludeTags.includes(parent.tagName) ||
-              excludeClasses.some((cls) => parent.classList.contains(cls)) ||
-              parent.closest('.llm-translation-source')) {
+              parent.closest(this.SELF_OWNED_UI_SELECTOR)) {
             return NodeFilter.FILTER_REJECT;
           }
 
@@ -403,7 +423,7 @@ class WebpageTranslatorService {
       return parent;
     };
 
-    // 收集符合条件的节点；对照模式将同一段落中的文本合并为一个翻译单元。
+    // 收集符合条件的节点；段落聚合模式将同一段落中的文本合并为一个翻译单元。
     let node;
     let nodeIndex = 0;
     const paragraphGroups = new Map();
@@ -414,7 +434,7 @@ class WebpageTranslatorService {
         continue;
       }
 
-      if (displayMode === 'replace') {
+      if (isTextGranularity) {
         translateNodes.push({
           node,
           text,
@@ -432,7 +452,7 @@ class WebpageTranslatorService {
       }
     }
 
-    if (displayMode !== 'replace') {
+    if (!isTextGranularity) {
       for (const group of paragraphGroups.values()) {
         const text = normalizeText(group.textParts.join(' '));
         if (text) {
@@ -711,22 +731,25 @@ Do not add any explanation or additional content.`;
   
   /**
    * 在网页中显示翻译结果
-   * @param {Array<{node: Node, text: string, id: string}>} nodes - 节点信息数组 
+   * @param {Array<{node: Node, text: string, id: string}>} nodes - 节点信息数组
    * @param {Array<{id: string, translation: string}>} translations - 翻译结果数组
-   * @param {'bilingual'|'replace'} displayMode - 译文展示方式
+   * @param {'bilingual'|'translation-only'|'hover'|'replace'} displayMode - 译文展示方式
    */
   static displayTranslations(nodes, translations, displayMode = 'bilingual') {
     if (!nodes || !translations) {
       console.error('节点数组或翻译数组为空', nodes?.length, translations?.length);
       return;
     }
-    
+
+    // 在 <body> 上记录当前展示模式，供 content.css 用 data-llm-display 属性控制各模式效果
+    document.body.dataset.llmDisplay = displayMode;
+
     // 创建ID到翻译的映射
     const translationMap = new Map();
     for (const translationItem of translations) {
       translationMap.set(translationItem.id, translationItem.translation);
     }
-    
+
     // 遍历所有节点添加翻译
     for (const nodeInfo of nodes) {
       const translation = translationMap.get(nodeInfo.id);
@@ -736,10 +759,16 @@ Do not add any explanation or additional content.`;
         continue;
       }
 
-      // 译文与原文相同（数字、专有名词、本就不需要翻译等），没必要显示译文
+      // 译文与原文相同（数字、专有名词、本就不需要翻译等），没必要显示译文。
+      // 写入 liveCache（identity 记为 text -> text），本次会话内不再重复翻译，
+      // 避免反复出现「1 段」却永远打不上标记。
       if (String(translation).trim() === (nodeInfo.text || '').trim()) {
+        this.liveCache.set(nodeInfo.text, nodeInfo.text);
         continue;
       }
+
+      // 统一事实来源：任何成功译文都写入缓存，页面重渲染抹掉标记后由对账零 API 恢复
+      this.liveCache.set(nodeInfo.text, translation);
 
       try {
         if (displayMode === 'replace') {
@@ -755,10 +784,23 @@ Do not add any explanation or additional content.`;
           continue;
         }
 
+        // 仅显示译文：文本节点粒度，原文包进 span，译文紧随其后
+        if (displayMode === 'translation-only') {
+          this.insertInlineTranslation(nodeInfo.node, translation, nodeInfo.id);
+          continue;
+        }
+
+        // 双语对照 / 悬停显示译文：段落粒度，译文追加到段落末尾
         const sourceElement = nodeInfo.node.nodeType === Node.ELEMENT_NODE
           ? nodeInfo.node
           : nodeInfo.node.parentElement;
-        if (!sourceElement || sourceElement.querySelector(':scope > .llm-translation-label')) {
+        if (!sourceElement) {
+          continue;
+        }
+        if (sourceElement.querySelector(':scope > .llm-translation-label')) {
+          // 已有译文但丢了 source 标记（如页面重渲染只清了类名没清节点）：
+          // 补回标记，避免下次被重复收集、反复翻译。
+          sourceElement.classList.add('llm-translation-source');
           continue;
         }
 
@@ -777,6 +819,37 @@ Do not add any explanation or additional content.`;
         console.error('Error displaying translation:', error, nodeInfo);
       }
     }
+  }
+
+  /**
+   * 文本节点粒度插入译文：原文包进 .llm-translation-original，译文标签紧随其后。
+   * 用于「仅显示译文」模式，显示/隐藏由 content.css 按 data-llm-display 控制。
+   * @param {Text} node - 原文文本节点
+   * @param {string} translation - 译文文本
+   * @param {string} id - 翻译结果 ID
+   */
+  static insertInlineTranslation(node, translation, id) {
+    const parent = node.parentNode;
+    if (!parent || parent.closest('.llm-translation-source')) {
+      return; // 防重：该文本已在译文块内（例如并发批次的重复节点）
+    }
+
+    // 原文包进带 source 标识的 span，显示/去重都作用在这个 span 上
+    const wrap = document.createElement('span');
+    wrap.className = 'llm-translation-source llm-translation-original';
+    parent.insertBefore(wrap, node);
+    wrap.appendChild(node);
+
+    // 译文单独成行：span 之后插入 <br> 再插入译文
+    const lineBreak = document.createElement('br');
+    lineBreak.className = 'llm-translation-br';
+    wrap.after(lineBreak);
+
+    const translationLabel = document.createElement('span');
+    translationLabel.className = 'llm-translation-label';
+    translationLabel.textContent = translation;
+    translationLabel.dataset.translationId = id;
+    lineBreak.after(translationLabel);
   }
 
   /**
@@ -876,13 +949,14 @@ Do not add any explanation or additional content.`;
   static ensureCompleteConfig(config) {
     config = config || {};
     config.nativeLanguage = config.nativeLanguage || 'zh';
-    config.maxApiCalls = Math.min(50, Math.max(1, Number.parseInt(config.maxApiCalls, 10) || 10));
+    config.maxApiCalls = Math.min(50, Math.max(1, Number.parseInt(config.maxApiCalls, 10) || 20));
     config.concurrentApiCalls = Math.min(
       20,
       Math.max(1, Number.parseInt(config.concurrentApiCalls, 10) || 3)
     );
-    config.translationDisplayMode = config.translationDisplayMode === 'replace'
-      ? 'replace'
+    const displayModes = ConfigService.getDisplayModes().map((item) => item.id);
+    config.translationDisplayMode = displayModes.includes(config.translationDisplayMode)
+      ? config.translationDisplayMode
       : 'bilingual';
     config.ignoredPageRegions = Array.isArray(config.ignoredPageRegions)
       ? config.ignoredPageRegions
@@ -897,9 +971,13 @@ Do not add any explanation or additional content.`;
   }
   
   /**
-   * 显示翻译进行中提示
+   * 显示翻译进行中提示。翻译开始时清掉上一条完成提示的淡出定时器，
+   * 避免旧定时器在翻译进行中把新的提示框移除（保证触发翻译必有可见提示）。
    */
   static showTranslationInProgress() {
+    clearTimeout(this.statusBoxFadeTimer);
+    this.statusBoxFadeTimer = null;
+
     let statusBox = document.getElementById('llm-translation-status');
     if (!statusBox) {
       statusBox = document.createElement('div');
@@ -908,10 +986,38 @@ Do not add any explanation or additional content.`;
     }
 
     statusBox.classList.remove('is-error');
+    statusBox.classList.remove('is-fading');
     statusBox.innerHTML = `
       <div class="llm-status-row">
         <div class="llm-status-spinner"></div>
         <span class="llm-status-text">正在翻译网页…</span>
+        <button type="button" class="llm-status-cancel" title="终止翻译" aria-label="终止翻译">×</button>
+      </div>
+    `;
+    this.bindCancelAction(statusBox);
+  }
+
+  /**
+   * 显示增量翻译（live）进行中的提示。复用状态框，带取消按钮，可随时终止增量翻译。
+   * @param {number} count - 本次待翻译的文本条数
+   */
+  static showLiveTranslationProgress(count) {
+    clearTimeout(this.statusBoxFadeTimer);
+    this.statusBoxFadeTimer = null;
+
+    let statusBox = document.getElementById('llm-translation-status');
+    if (!statusBox) {
+      statusBox = document.createElement('div');
+      statusBox.id = 'llm-translation-status';
+      document.body.appendChild(statusBox);
+    }
+
+    statusBox.classList.remove('is-error');
+    statusBox.classList.remove('is-fading');
+    statusBox.innerHTML = `
+      <div class="llm-status-row">
+        <div class="llm-status-spinner"></div>
+        <span class="llm-status-text">正在翻译新增内容（${count} 段）…</span>
         <button type="button" class="llm-status-cancel" title="终止翻译" aria-label="终止翻译">×</button>
       </div>
     `;
@@ -938,12 +1044,19 @@ Do not add any explanation or additional content.`;
   }
 
   /**
-   * 终止当前网页翻译，包括所有正在进行的并行请求。
+   * 终止当前网页翻译，包括所有正在进行的并行请求；若处于增量翻译中，
+   * 同时停止 live 监听与进行中的请求。
    */
   static cancelTranslation() {
     const controller = this.activeTranslationController;
     if (controller && !controller.signal.aborted) {
       controller.abort();
+    }
+    // liveAbortController 非空即表示增量翻译正在运行
+    if (this.liveAbortController) {
+      this.stopLiveTranslation();
+      this.liveConfig = null;
+      this.showTranslationComplete('已终止增量翻译');
     }
   }
   
@@ -953,6 +1066,9 @@ Do not add any explanation or additional content.`;
    * @param {boolean} isError - 是否为错误消息
    */
   static showTranslationComplete(message, isError = false) {
+    clearTimeout(this.statusBoxFadeTimer);
+    this.statusBoxFadeTimer = null;
+
     let statusBox = document.getElementById('llm-translation-status');
     if (!statusBox) {
       statusBox = document.createElement('div');
@@ -961,15 +1077,17 @@ Do not add any explanation or additional content.`;
     }
 
     statusBox.classList.toggle('is-error', Boolean(isError));
+    statusBox.classList.remove('is-fading');
     const icon = isError ? '✕' : '✓';
     statusBox.innerHTML = `
       <div class="llm-status-row">
         <span class="llm-status-icon">${icon}</span>
-        <span>${message}</span>
+        <span class="llm-status-text">${message}</span>
       </div>
     `;
 
-    setTimeout(() => {
+    this.statusBoxFadeTimer = setTimeout(() => {
+      this.statusBoxFadeTimer = null;
       if (!statusBox || !document.body.contains(statusBox)) {
         return;
       }
@@ -988,6 +1106,8 @@ Do not add any explanation or additional content.`;
   static clearTranslations() {
     // 清除翻译后停止 live 监听，避免新内容继续被自动翻译
     this.stopLiveTranslation();
+    // 清空事实来源缓存：下一次翻译重新从头积累
+    this.liveCache.clear();
 
     // 查找并移除所有翻译标签与其前的换行符
     const translationLabels = document.querySelectorAll('.llm-translation-label');
@@ -1000,6 +1120,17 @@ Do not add any explanation or additional content.`;
       if (br && br.parentNode) {
         br.parentNode.removeChild(br);
       }
+    });
+    // 解包 .llm-translation-original：把 span 内的原文文本节点移回父节点，再删除 span
+    document.querySelectorAll('.llm-translation-original').forEach((span) => {
+      if (!span || !span.parentNode) {
+        return;
+      }
+      const parent = span.parentNode;
+      while (span.firstChild) {
+        parent.insertBefore(span.firstChild, span);
+      }
+      parent.removeChild(span);
     });
     document.querySelectorAll('.llm-translation-source').forEach((source) => {
       source.classList.remove('llm-translation-source');
@@ -1015,6 +1146,7 @@ Do not add any explanation or additional content.`;
       document.body.removeChild(statusBox);
     }
     document.body.classList.remove('llm-translations-hidden');
+    document.body.removeAttribute('data-llm-display');
   }
 
   /**
@@ -1052,13 +1184,20 @@ Do not add any explanation or additional content.`;
     this.liveInFlight.clear();
     this.liveFailedTexts.clear();
     this.liveRecentRuns = [];
-    this.livePausedUntil = 0;
+    this.liveBackoffUntil = 0;
+    this.liveFights = 0;
+    this.liveLastSyncAt = 0;
+    // 不清空 liveCache：它是本次会话的事实来源，displayTranslations 会随新翻译持续更新
+    this.liveAbortController = new AbortController();
     this.liveObserver = new MutationObserver((mutations) => {
       if (this.hasRelevantMutations(mutations)) {
         this.scheduleLiveRun();
       }
     });
     this.liveObserver.observe(document.body, { childList: true, subtree: true });
+    // 滚动会把已加载的新内容带入视口，滚动时也触发增量翻译
+    this.liveScrollHandler = () => this.scheduleLiveRun();
+    window.addEventListener('scroll', this.liveScrollHandler, { passive: true });
     // 立即处理一次：覆盖初始翻译期间已经懒加载进来的内容
     this.scheduleLiveRun();
   }
@@ -1072,9 +1211,17 @@ Do not add any explanation or additional content.`;
       this.liveObserver.disconnect();
       this.liveObserver = null;
     }
+    if (this.liveScrollHandler) {
+      window.removeEventListener('scroll', this.liveScrollHandler);
+      this.liveScrollHandler = null;
+    }
     if (this.liveTimer) {
       clearTimeout(this.liveTimer);
       this.liveTimer = null;
+    }
+    if (this.liveAbortController) {
+      this.liveAbortController.abort();
+      this.liveAbortController = null;
     }
   }
 
@@ -1082,11 +1229,24 @@ Do not add any explanation or additional content.`;
    * 过滤掉我们自己插入的译文节点，判断 mutation 是否可能带来新的可翻译内容。
    */
   static hasRelevantMutations(mutations) {
+    // 我们自己的注入节点（译文/换行/原文包裹 span）不应再次触发增量翻译，
+    // 否则每次翻译都会自我触发观察器，形成一轮无意义的 run。
+    const isOurInjection = (node) => {
+      if (!node) {
+        return false;
+      }
+      // 文本节点移动（如 translation-only 把原文移进包裹 span）也要算我们的注入
+      const el = node.nodeType === Node.ELEMENT_NODE ? node : node.parentElement;
+      if (!el) {
+        return false;
+      }
+      // 状态框是我们自己的 UI：它的完成/进度文本替换不该触发新一轮对账
+      // 我们自建 UI 与译文标记的增删/文本替换都不算新内容，不触发新一轮对账
+      return Boolean(el.closest(this.SELF_OWNED_UI_SELECTOR));
+    };
     for (const mutation of mutations) {
       for (const added of mutation.addedNodes) {
-        if (added.nodeType === Node.ELEMENT_NODE
-            && (added.classList.contains('llm-translation-label')
-                || added.classList.contains('llm-translation-br'))) {
+        if (isOurInjection(added)) {
           continue;
         }
         return true;
@@ -1096,7 +1256,7 @@ Do not add any explanation or additional content.`;
   }
 
   /**
-   * 防抖调度一次增量翻译。
+   * 防抖调度一次对账。
    */
   static scheduleLiveRun() {
     if (this.liveTimer) {
@@ -1104,46 +1264,58 @@ Do not add any explanation or additional content.`;
     }
     this.liveTimer = setTimeout(() => {
       this.liveTimer = null;
-      this.runLiveTranslation();
+      this.syncLiveTranslations();
     }, 600);
   }
 
   /**
-   * 翻译靠近视口的、尚未翻译的新内容（增量分批，尽量不影响阅读）。
+   * 幂等对账（live 唯一入口）：
+   * 1. 缓存命中的文本缺标记 → 从缓存零 API 恢复（页面重渲染抹掉译文时兜底）；
+   * 2. 视口附近缓存未命中、且非失败冷却中的文本 → 批量翻译后写入缓存。
+   * 防循环是显式规则：若只有恢复没有新翻译，且连续多次说明页面在反复抹掉译文，
+   * 则进入静默期（liveBackoffUntil）不再跟框架打架。
    */
-  static async runLiveTranslation() {
+  static async syncLiveTranslations() {
     if (!this.liveConfig) {
       return;
     }
-    const runId = this.liveRunId;
-    const config = this.liveConfig;
-
-    // 频率下限：距上次执行不足 1.2s 时顺延到下一轮
     const now = Date.now();
-    if (now - this.liveLastRunAt < 1200) {
+    if (now < this.liveBackoffUntil) {
+      return; // 页面在反复抹掉译文：静默期
+    }
+    // 频率下限：距上次执行不足 1.2s 时顺延到下一轮
+    if (now - this.liveLastSyncAt < 1200) {
       this.scheduleLiveRun();
       return;
     }
-    this.liveLastRunAt = now;
+    this.liveLastSyncAt = now;
+    const runId = this.liveRunId;
+    const config = this.liveConfig;
 
     try {
-      // 熔断：页面异常持续快速产生新内容时，暂停片刻后自动恢复（不做永久硬上限）
-      if (Date.now() < this.livePausedUntil) {
+      // 软限流：10s 滑动窗口预算，超出后顺延到窗口滑动再继续（取代旧的"暂停 20s"熔断）
+      this.liveRecentRuns = this.liveRecentRuns.filter(
+        (r) => r.ts > now - this.LIVE_BURST_WINDOW_MS
+      );
+      const recentCount = this.liveRecentRuns.reduce((sum, r) => sum + r.count, 0);
+      const remainingBudget = this.LIVE_BURST_MAX_NODES - recentCount;
+      if (remainingBudget <= 0) {
+        const earliest = this.liveRecentRuns[0];
+        const nextRunAt = earliest
+          ? earliest.ts + this.LIVE_BURST_WINDOW_MS
+          : now + this.LIVE_BURST_WINDOW_MS;
+        this.liveTimer = setTimeout(() => {
+          this.liveTimer = null;
+          this.syncLiveTranslations();
+        }, Math.max(1000, nextRunAt - Date.now()));
         return;
       }
 
+      // 收集视口附近的可译文本，并按文本去重
       const allNodes = this.getTranslatableNodes(config.translationDisplayMode, config);
-      const nearNodes = allNodes
-        .filter((info) => this.isNearViewport(info.node))
-        .slice(0, 30);
-      if (nearNodes.length === 0) {
-        return;
-      }
-
-      // 去重 + 过滤近期失败/正在翻译中的文本，避免同一内容被反复调用
       const textToNodes = new Map();
-      for (const info of nearNodes) {
-        if (this.isLiveTextBlocked(info.text)) {
+      for (const info of allNodes) {
+        if (!this.isNearViewport(info.node)) {
           continue;
         }
         const list = textToNodes.get(info.text);
@@ -1153,62 +1325,96 @@ Do not add any explanation or additional content.`;
           textToNodes.set(info.text, [info]);
         }
       }
-      const uniqueItems = Array.from(textToNodes.entries())
-        .map(([text, nodes]) => ({ id: nodes[0].id, text }))
-        .filter((item) => !this.liveInFlight.has(item.text));
-      if (uniqueItems.length === 0) {
+      if (textToNodes.size === 0) {
+        this.liveFights = 0;
         return;
       }
 
-      // 标记为正在翻译，避免并发轮次重复调用同一内容
-      uniqueItems.forEach((item) => this.liveInFlight.add(item.text));
-      let results;
-      try {
-        results = await this.batchTranslate(uniqueItems, config, undefined, () => true);
-      } finally {
-        uniqueItems.forEach((item) => this.liveInFlight.delete(item.text));
+      // 分类：缓存命中（非 identity）→ 缺标记则恢复；缓存未命中 → 待翻译；identity → 永久跳过
+      const restoreItems = [];
+      const translateItems = [];
+      for (const [text, nodes] of textToNodes) {
+        const cached = this.liveCache.get(text);
+        if (cached !== undefined && cached !== text) {
+          restoreItems.push({ text, nodes });
+        } else if (cached === undefined
+                   && !this.liveInFlight.has(text)
+                   && !this.isLiveTextBlocked(text)) {
+          translateItems.push({ text, nodes });
+        }
       }
-      // 若期间已停止 live（如清除翻译），放弃展示，避免把译文加回去
-      if (runId !== this.liveRunId) {
+
+      if (restoreItems.length === 0 && translateItems.length === 0) {
+        this.liveFights = 0;
         return;
       }
 
-      // 分离成功与失败的文本：失败内容记录冷却，本次不展示错误占位
-      const resultMap = new Map(results.map((r) => [r.id, r.translation]));
-      const failNow = Date.now();
-      const rawNodes = [];
-      const expandedTranslations = [];
-      for (const item of uniqueItems) {
-        const translation = resultMap.get(item.id);
-        if (!translation || /^\[(Translation Error|API|Model)/.test(translation)) {
-          this.liveFailedTexts.set(item.text, failNow);
-          continue;
+      // 恢复缓存命中但缺标记的译文（不重新调接口）
+      if (restoreItems.length > 0) {
+        const restoreRaw = [];
+        const restoreExpanded = [];
+        for (const item of restoreItems) {
+          const translation = this.liveCache.get(item.text);
+          for (const info of item.nodes) {
+            restoreRaw.push(info);
+            restoreExpanded.push({ id: info.id, translation });
+          }
         }
-        const nodes = textToNodes.get(item.text) || [];
-        rawNodes.push(...nodes);
-        for (const info of nodes) {
-          expandedTranslations.push({ id: info.id, translation });
-        }
+        this.displayTranslations(restoreRaw, restoreExpanded, config.translationDisplayMode);
       }
-      if (rawNodes.length === 0) {
-        return; // 全部失败，本次不展示
-      }
-      this.displayTranslations(rawNodes, expandedTranslations, config.translationDisplayMode);
 
-      // 熔断检测：统计近期翻译量，异常高频（疑似病态循环）则暂停片刻
-      this.liveRecentRuns.push({ ts: Date.now(), count: rawNodes.length });
-      const windowStart = Date.now() - this.LIVE_BURST_WINDOW_MS;
-      this.liveRecentRuns = this.liveRecentRuns.filter((r) => r.ts >= windowStart);
-      const recentCount = this.liveRecentRuns.reduce((sum, r) => sum + r.count, 0);
-      if (recentCount > this.LIVE_BURST_MAX_NODES) {
-        this.livePausedUntil = Date.now() + this.LIVE_PAUSE_MS;
-        this.showTranslationComplete('页面持续快速产生新内容，自动翻译已暂停片刻');
-        console.warn(
-          `[live] 检测到异常高频新内容（${recentCount} 段/${this.LIVE_BURST_WINDOW_MS / 1000}s），`
-          + `暂停 ${this.LIVE_PAUSE_MS / 1000}s 后自动恢复`
-        );
+      // 翻译真正的新内容
+      if (translateItems.length > 0) {
+        const budgeted = translateItems.slice(0, Math.min(this.LIVE_MAX_NODES_PER_RUN, remainingBudget));
+        if (budgeted.length > 0) {
+          // 触发翻译：必须给出可见提示（进行中提示带取消按钮）
+          this.showLiveTranslationProgress(budgeted.length);
+          const items = budgeted.map((item) => ({ id: item.nodes[0].id, text: item.text }));
+          budgeted.forEach((item) => this.liveInFlight.add(item.text));
+          let results;
+          try {
+            results = await this.batchTranslate(items, config, this.liveAbortController?.signal, () => true);
+          } finally {
+            budgeted.forEach((item) => this.liveInFlight.delete(item.text));
+          }
+          if (runId !== this.liveRunId) {
+            return; // live 已被停止（如清除翻译），放弃展示
+          }
+          const resultMap = new Map(results.map((r) => [r.id, r.translation]));
+          const rawNodes = [];
+          const expandedTranslations = [];
+          for (const item of budgeted) {
+            const translation = resultMap.get(item.nodes[0].id);
+            if (!translation || /^\[(Translation Error|API|Model)/.test(translation)) {
+              this.liveFailedTexts.set(item.text, Date.now());
+              continue;
+            }
+            for (const info of item.nodes) {
+              rawNodes.push(info);
+              expandedTranslations.push({ id: info.id, translation });
+            }
+          }
+          if (rawNodes.length === 0) {
+            this.showTranslationComplete('新增内容翻译失败', true);
+            return; // 全部失败，本次不展示
+          }
+          this.displayTranslations(rawNodes, expandedTranslations, config.translationDisplayMode);
+          this.liveRecentRuns.push({ ts: Date.now(), count: rawNodes.length });
+          this.showTranslationComplete(`已翻译新增 ${rawNodes.length} 段文本`);
+          console.log(`[live] 增量翻译 ${rawNodes.length} 段`);
+        }
       }
-      console.log(`[live] 增量翻译 ${rawNodes.length} 段`);
+
+      // 防循环：只有恢复没有新翻译 → 说明页面在反复抹掉译文；连续 3 次进入静默期
+      if (translateItems.length === 0 && restoreItems.length > 0) {
+        this.liveFights++;
+        if (this.liveFights >= 3) {
+          this.liveBackoffUntil = Date.now() + 15000;
+          this.liveFights = 0;
+        }
+      } else {
+        this.liveFights = 0;
+      }
     } catch (error) {
       if (error?.name !== 'AbortError') {
         console.error('增量翻译出错:', error);
@@ -1286,7 +1492,7 @@ Do not add any explanation or additional content.`;
       config = await this.loadConfig();
       config = this.ensureCompleteConfig(config);
 
-      // 对照模式按段落聚合，直接替换模式保持文本节点粒度。
+      // 双语对照/悬停按段落聚合，仅显示译文/直接替换保持文本节点粒度。
       const allNodeInfoArray = this.getTranslatableNodes(config.translationDisplayMode, config);
 
       if (allNodeInfoArray.length === 0) {
@@ -1340,6 +1546,8 @@ Do not add any explanation or additional content.`;
       );
       let callCount = 0;
       let translatedCount = 0;
+      // 是否至少有一条真实译文（排除错误占位符），用于给出诚实的完成提示
+      let translatedAny = false;
       let callLimitReached = scheduledItemCount < uniqueItems.length;
       let nextBatchIndex = 0;
       const reserveApiCall = () => {
@@ -1392,6 +1600,12 @@ Do not add any explanation or additional content.`;
             }
           }
 
+          if (expandedTranslations.some(
+            (t) => !/^\[(Translation Error|API|Model)/.test(t.translation)
+          )) {
+            translatedAny = true;
+          }
+
           this.displayTranslations(
             batchRawNodes,
             expandedTranslations,
@@ -1422,6 +1636,12 @@ Do not add any explanation or additional content.`;
 
       if (callLimitReached) {
         this.showTranslationComplete('已达到接口调用上限', true);
+        return;
+      }
+
+      // 全部失败（如模型未配置）时不显示虚假的成功提示
+      if (!translatedAny) {
+        this.showTranslationComplete('翻译失败：请检查当前模型的配置', true);
         return;
       }
 
